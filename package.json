@@ -1,0 +1,45 @@
+{
+  "name": "fa-support-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Context-aware AI customer support agent for Telegram",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:llm": "RUN_LLM_EVALS=1 vitest run tests/evals",
+    "test:live": "tsx tests/live/run.ts",
+    "db:migrate": "tsx src/storage/cli.ts",
+    "telegram:login": "tsx src/telegram/user/login.ts",
+    "admin:login": "tsx src/admin/playwright/login.ts",
+    "dev:chat": "tsx src/dev/chat.ts",
+    "telegram:check": "tsx src/telegram/user/check.ts"
+  },
+  "dependencies": {
+    "big-integer": "^1.6.52",
+    "dotenv": "^17.4.2",
+    "openai": "^7.15.0",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "playwright": "^1.63.0",
+    "telegram": "^2.26.22",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "@types/pg": "^8.23.1",
+    "pg-mem": "^3.0.14",
+    "pino-pretty": "^13.1.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

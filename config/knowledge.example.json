@@ -1,0 +1,15 @@
+{
+  "$comment": "FORMAT EXAMPLE ONLY — placeholder answers, not real policy. Copy entries into knowledge.json after the business confirms the wording.",
+  "entries": [
+    {
+      "id": "lineup",
+      "keywords": ["lineup", "line up", "playing 11", "playing xi", "team news"],
+      "answer": "<<Approved answer about where/when lineups are shown in the app>>"
+    },
+    {
+      "id": "kyc_documents",
+      "keywords": ["kyc", "documents", "pan card", "aadhaar", "verification"],
+      "answer": "<<Approved answer listing KYC documents>>"
+    }
+  ]
+}

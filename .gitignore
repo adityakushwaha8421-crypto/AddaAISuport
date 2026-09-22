@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+
+# editors
+.idea/
+.vscode/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Secrets / runtime state — never commit
+secrets/
+*.session
+*.session.enc
+admin-storage-state.json
+data/tmp/
+logs/

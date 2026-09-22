@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fa
+          POSTGRES_PASSWORD: fa
+          POSTGRES_DB: fa_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fa" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Runs the storage contract suite against real Postgres in addition to memory + pg-mem.
+      TEST_DATABASE_URL: postgres://fa:fa@localhost:5432/fa_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
