@@ -27,7 +27,7 @@ export function parseConfirmation(text: string): Confirmation | undefined {
 
 export class ExportConfirmations {
   constructor(
-    private readonly o: { store: Store; outbox: OutboxSender; composer: ResponseComposer; locks: KeyedMutex; log: Logger },
+    private readonly o: { store: Store; outbox: OutboxSender; composer: ResponseComposer; locks: KeyedMutex; log: Logger; botSwitch?: { isOn(): Promise<boolean> } },
   ) {}
 
   async onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<'solved' | 'duplicate' | 'ignored'> {
@@ -52,16 +52,22 @@ export class ExportConfirmations {
         return 'duplicate';
       }
       const lang = user.preferredLanguage ?? 'hinglish';
-      const composed = await this.o.composer.compose({
-        acts: [{ type: 'deposit_solved' }], language: lang, userText: '', history: [], address: addressTerm(user.memory), brief: prefersBrief(user.memory),
-      });
-      const sent = await this.o.outbox.send({
-        key: `solved:${c.id}`, chatId: user.chatId, userId: user.id, text: composed.text,
-        meta: { kind: 'reply', html: true, caseId: c.id, caseType: 'deposit', acts: ['deposit_solved'] },
-      });
-      if (!sent.sent) {
-        log.warn({ case: c.id }, 'resolution message could not be sent; case left pending for retry');
-        return 'ignored';
+      const botOn = !this.o.botSwitch || (await this.o.botSwitch.isOn());
+      if (botOn) {
+        const composed = await this.o.composer.compose({
+          acts: [{ type: 'deposit_solved' }], language: lang, userText: '', history: [], address: addressTerm(user.memory), brief: prefersBrief(user.memory),
+        });
+        const sent = await this.o.outbox.send({
+          key: `solved:${c.id}`, chatId: user.chatId, userId: user.id, text: composed.text,
+          meta: { kind: 'reply', html: true, caseId: c.id, caseType: 'deposit', acts: ['deposit_solved'] },
+        });
+        if (!sent.sent) {
+          log.warn({ case: c.id }, 'resolution message could not be sent; case left pending for retry');
+          return 'ignored';
+        }
+      } else {
+        // The bot is OFF: the team's confirmation still closes the case, but no automatic message goes out.
+        log.info({ case: c.id }, 'bot is OFF: deposit marked solved, customer not messaged');
       }
       c.status = 'resolved';
       c.step = 'solved';

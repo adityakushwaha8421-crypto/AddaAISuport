@@ -1,7 +1,7 @@
 import { assemble, type App } from '../../src/app.js';
 import { FixtureAdminGateway, type AdminFixtures } from '../../src/admin/fixture.js';
 import type { AdminGateway } from '../../src/domain/admin.js';
-import type { InboundMessage, MediaRef } from '../../src/domain/messages.js';
+import { messageBody, type InboundMessage, type MediaRef } from '../../src/domain/messages.js';
 import { NoFrameExtractor } from '../../src/evidence/video.js';
 import { DisabledLlm, type LlmClient } from '../../src/llm/client.js';
 import { DEFAULT_PATTERNS } from '../../src/nlu/entities.js';
@@ -178,6 +178,9 @@ export interface HarnessOptions {
   instanceName?: string;
   debounceMs?: number;
   maxWaitMs?: number;
+  /** Telegram ids allowed to run /boton, /botoff, /restart. */
+  adminIds?: string[];
+  onRestart?: (reply: { chatId: string }) => void;
 }
 
 export class UserSim {
@@ -248,6 +251,10 @@ export class UserSim {
   /** Deliver one message as its own turn and return the bot's reply text ('' if none). */
   async send(msg: InboundMessage): Promise<string> {
     const before = this.replies.length;
+    // As app.onMessage does: an authorised admin's command is acted on before the customer pipeline.
+    if (await this.h.app.adminCommands.handle({ chatId: msg.chatId, messageId: msg.messageId, fromUserId: msg.userId, text: messageBody(msg) })) {
+      return this.replies.length > before ? this.last : '';
+    }
     const inserted = await this.h.app.processor.receive(msg);
     if (this.pendingRead) this.h.transport.humanReads(this.id);
     this.pendingRead = false;
@@ -333,6 +340,8 @@ export class Harness {
         maxConcurrentTurns: opts.concurrency ?? 8,
         jobLeaseMs: opts.jobLeaseMs,
         instanceName: opts.instanceName,
+        adminIds: opts.adminIds,
+        onRestart: opts.onRestart,
         responseMode: opts.responseMode ?? 'template',
         takeoverMinutes: 0, // like production: a human's chat stays theirs until they hand it back
         handoffMaxAttempts: 10,

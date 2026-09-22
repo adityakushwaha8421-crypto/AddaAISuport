@@ -11,6 +11,16 @@ describe.each(allStoreFactories)('Store contract: $name', (factory) => {
     await store.close();
   });
 
+  it('keeps small settings shared by every process (the bot switch)', async () => {
+    expect(await store.settings.get('bot.enabled')).toBeUndefined();
+    await store.settings.set('bot.enabled', false);
+    expect(await store.settings.get('bot.enabled')).toBe(false);
+    await store.settings.set('bot.enabled', true);
+    expect(await store.settings.get('bot.enabled')).toBe(true);
+    await store.settings.set('greeting', { text: 'hi', n: 2 });
+    expect(await store.settings.get('greeting')).toEqual({ text: 'hi', n: 2 });
+  });
+
   it('upserts users without clobbering known fields', async () => {
     await store.users.upsert({ id: 'u1', chatId: 'c1', username: 'ravi', firstName: 'Ravi' });
     const u = await store.users.upsert({ id: 'u1', chatId: 'c1' });

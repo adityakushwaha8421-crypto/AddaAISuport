@@ -57,6 +57,8 @@ export interface ProcessorDeps {
   readState?: ReadStateApi;
   /** Forwards each case's requested items to the export bot once they are all in. */
   exporter?: EvidenceExporter;
+  /** The agent's ON/OFF switch (/boton, /botoff): OFF means no reply, no request, nothing. */
+  botSwitch?: { isOn(): Promise<boolean> };
   log: Logger;
   metrics?: Metrics;
   clock?: () => Date;
@@ -165,6 +167,15 @@ export class TurnProcessor {
     let tlog = (ctx.log ?? this.deps.log).child({ turn: turn.id, chat: chatId, user: user.id, messages: raw.map((m) => m.messageId), ...(ctx.jobId ? { job: ctx.jobId } : {}) });
     const trace: Record<string, unknown> = { messages: raw.length };
     let filed = false; // the chat folders already reflect this turn
+
+    // Switched OFF by an admin: the message is kept for the humans, and that is all.
+    if (this.deps.botSwitch && !(await this.deps.botSwitch.isOn())) {
+      await store.messages.markProcessed(chatId, raw.map((m) => m.messageId), { turnId: turn.id });
+      await store.turns.update(turn.id, { status: 'skipped', trace: scrubber.scrubDeep({ ...trace, reason: 'bot_off' }), completedAt: new Date() });
+      metrics?.turns.inc({ outcome: 'bot_off', intent: 'none', interpreter: 'none' });
+      tlog.info('bot is OFF: no reply');
+      return { turnId: turn.id, replied: false, acts: [] };
+    }
 
     try {
       // While a human handles the chat the bot never replies, but every message is still read: the

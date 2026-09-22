@@ -18,6 +18,7 @@
     "test:live": "tsx tests/live/run.ts",
     "db:migrate": "tsx src/storage/cli.ts",
     "telegram:login": "tsx src/telegram/user/login.ts",
+    "telegram:session": "tsx src/telegram/user/sessionString.ts",
     "admin:login": "tsx src/admin/playwright/login.ts",
     "dev:chat": "tsx src/dev/chat.ts",
     "telegram:check": "tsx src/telegram/user/check.ts"

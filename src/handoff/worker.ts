@@ -22,6 +22,8 @@ export interface WorkerOptions {
   composer?: ResponseComposer;
   exportRetryAfterMs?: number;
   maxExportAttempts?: number;
+  /** While OFF, exports (which end in a message to the customer) wait. */
+  botSwitch?: { isOn(): Promise<boolean> };
 }
 
 /**
@@ -90,6 +92,7 @@ export class HandoffWorker {
   async retryExports(): Promise<number> {
     const { store, locks, log, exporter, composer } = this.o;
     if (!exporter || !composer) return 0;
+    if (this.o.botSwitch && !(await this.o.botSwitch.isOn())) return 0; // OFF: nothing automatic reaches a customer
     const now = this.o.clock?.() ?? new Date();
     const retryAfter = this.o.exportRetryAfterMs ?? 2 * 60_000;
     const maxAttempts = this.o.maxExportAttempts ?? 20;

@@ -1,9 +1,10 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { access } from 'node:fs/promises';
 import { DisabledAdminGateway, FixtureAdminGateway } from './admin/fixture.js';
 import { loadAdminPanelConfig } from './admin/playwright/config.js';
 import { PlaywrightAdminGateway } from './admin/playwright/gateway.js';
 import { assemble, type App } from './app.js';
+import { Supervisor, type Booted, type BootContext } from './control/supervisor.js';
 import { loadEnv, secretValues, type Env } from './config/env.js';
 import type { AdminGateway } from './domain/admin.js';
 import { FfmpegFrameExtractor, NoFrameExtractor, type FrameExtractor } from './evidence/video.js';
@@ -19,7 +20,7 @@ import { KnowledgeBase } from './response/knowledge.js';
 import { acquireInstanceLock } from './util/instanceLock.js';
 import { scrubber } from './security/scrubber.js';
 import { createQueue, createStore } from './storage/index.js';
-import { BootstrapSessionStore, EncryptedFileSessionStore } from './telegram/user/sessionStore.js';
+import { sessionStoreFromEnv } from './telegram/user/sessionStore.js';
 import { parseAllowedUsers, UserTransport } from './telegram/user/userTransport.js';
 import { gatewayRoutes } from './telegram/gatewayApi.js';
 import { RemoteChatFolders, RemoteTransport } from './telegram/remote.js';
@@ -30,7 +31,7 @@ function createTransport(env: Env, log: Logger): UserTransport {
   return new UserTransport({
     apiId: env.TELEGRAM_API_ID!,
     apiHash: env.TELEGRAM_API_HASH!,
-    sessions: new BootstrapSessionStore(new EncryptedFileSessionStore(env.TELEGRAM_SESSION_FILE, env.SESSION_ENCRYPTION_KEY!), env.TELEGRAM_SESSION),
+    sessions: sessionStoreFromEnv(env, () => log.warn('the Telegram session changed at runtime; if login fails after a restart, run `npm run telegram:session` again')),
     supportChatId: env.SUPPORT_GROUP_CHAT_ID,
     exportChatId: env.EXPORT_BOT_ID,
     filter: { allowed: parseAllowedUsers(env.TELEGRAM_ALLOWED_USERS), ignoreContacts: env.TELEGRAM_IGNORE_CONTACTS },
@@ -73,16 +74,16 @@ async function createFrames(env: Env): Promise<FrameExtractor> {
   return new NoFrameExtractor();
 }
 
-async function main() {
+dotenv.config();
+
+/** One full start of the agent. The supervisor calls it at process start and again on /restart. */
+async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
   const env = loadEnv();
   scrubber.register(...secretValues(env));
   const role = env.ROLE;
-  const instance = `${role}-${process.pid}`;
-  const log = createLogger({ level: env.LOG_LEVEL, pretty: env.LOG_PRETTY, file: env.LOG_FILE }).child({ role, instance });
+  const instance = `${role}-${process.pid}${ctx.attempt > 1 ? `-r${ctx.attempt}` : ''}`;
+  const log = rootLog.child({ role, instance });
   const metrics = new Metrics();
-
-  // The gateway owns the account's one Telegram session: never two copies on the same account.
-  if (role !== 'worker') acquireInstanceLock(`${env.TELEGRAM_SESSION_FILE}.lock`);
 
   const store = await createStore(env, log.child({ mod: 'store' }));
   const queue = createQueue(store);
@@ -135,8 +136,12 @@ async function main() {
       jobLeaseMs: env.JOB_LEASE_SECONDS * 1000,
       jobMaxAttempts: env.JOB_MAX_ATTEMPTS,
       instanceName: instance,
+      adminIds: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+      onRestart: role === 'worker' ? undefined : ctx.requestRestart,
     },
   );
+  // ON/OFF survives an in-process restart even with the in-memory store.
+  if (ctx.previous?.botOn !== undefined) await app.botSwitch.seed(ctx.previous.botOn);
 
   let draining = false;
   const runsJobs = role !== 'gateway';
@@ -157,6 +162,7 @@ async function main() {
     onOwnOutgoing: (e) => app.onOwnOutgoing(e),
     onExportMessage: (m) => app.onExportMessage(m),
     onExportForward: (e) => app.onExportForward(e),
+    onAdminCommand: (e) => app.onAdminCommand(e),
   });
   if (localFolders) {
     const counts = await localFolders.refresh();
@@ -177,26 +183,44 @@ async function main() {
     }, () => undefined);
   }, 15_000);
   depth.unref();
-  log.info({ role, admin: env.ADMIN_MODE, llm: llm.available, port: env.HTTP_PORT, jobs: runsJobs }, 'support agent running');
+  log.info({ role, admin: env.ADMIN_MODE, llm: llm.available, port: env.HTTP_PORT, jobs: runsJobs, botOn: await app.botSwitch.current(), admins: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').filter(Boolean).length }, 'support agent running');
 
-  let stopping = false;
-  const shutdown = async (signal: string) => {
-    if (stopping) return;
-    stopping = true;
-    draining = true; // /readyz turns 503: the load balancer stops sending traffic
-    log.info({ signal }, 'shutting down: finishing in-flight jobs');
-    clearInterval(depth);
-    app.worker.stop();
-    await Promise.race([app.runner.drain(), new Promise((r) => setTimeout(r, 30_000))]);
-    await transport.stop().catch((err) => log.warn({ err }, 'transport stop failed'));
-    await app.admin.close();
-    health.close();
-    await store.close();
-    process.exit(0);
+  let stopped = false;
+  return {
+    async stop() {
+      if (stopped) return;
+      stopped = true;
+      draining = true; // /readyz turns 503: the load balancer stops sending traffic
+      log.info('stopping: finishing in-flight jobs');
+      clearInterval(depth);
+      app.worker.stop();
+      await Promise.race([app.runner.drain(), new Promise((r) => setTimeout(r, 30_000))]);
+      await transport.stop().catch((err) => log.warn({ err }, 'transport stop failed'));
+      await app.admin.close();
+      health.close();
+      await store.close();
+    },
+    sendText: (chatId, text) => transport.sendText(chatId, text),
+    carry: async () => ({ botOn: await app.botSwitch.current() }),
   };
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
-  process.on('unhandledRejection', (err) => log.error({ err }, 'unhandled rejection'));
+}
+
+async function main() {
+  const first = loadEnv();
+  const rootLog = createLogger({ level: first.LOG_LEVEL, pretty: first.LOG_PRETTY, file: first.LOG_FILE });
+  // The gateway owns the account's one Telegram session: never two copies on the same account.
+  // Taken once per process; an in-process /restart keeps it.
+  if (first.ROLE !== 'worker') acquireInstanceLock(`${first.TELEGRAM_SESSION_FILE}.lock`);
+
+  const supervisor = new Supervisor({
+    boot: (ctx) => boot(ctx, rootLog),
+    log: rootLog.child({ mod: 'supervisor' }),
+    reloadEnv: () => dotenv.config({ override: true }),
+  });
+  process.on('SIGINT', () => void supervisor.shutdown('SIGINT'));
+  process.on('SIGTERM', () => void supervisor.shutdown('SIGTERM'));
+  process.on('unhandledRejection', (err) => rootLog.error({ err }, 'unhandled rejection'));
+  await supervisor.start();
 }
 
 main().catch((err) => {

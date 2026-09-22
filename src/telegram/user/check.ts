@@ -10,15 +10,15 @@ import { Api, Logger, TelegramClient, sessions } from 'telegram';
 import { LogLevel } from 'telegram/extensions/Logger.js';
 import { loadEnv, secretValues } from '../../config/env.js';
 import { scrubber } from '../../security/scrubber.js';
-import { BootstrapSessionStore, EncryptedFileSessionStore } from './sessionStore.js';
+import { sessionStoreFromEnv } from './sessionStore.js';
 import { parseAllowedUsers } from './userTransport.js';
 
 async function main() {
   const env = loadEnv(process.env, ['telegram']);
   scrubber.register(...secretValues(env));
-  const store = new BootstrapSessionStore(new EncryptedFileSessionStore(env.TELEGRAM_SESSION_FILE, env.SESSION_ENCRYPTION_KEY!), env.TELEGRAM_SESSION);
+  const store = sessionStoreFromEnv(env);
   const session = await store.load();
-  if (!session) throw new Error('No session. Run `npm run telegram:login` (or set TELEGRAM_SESSION).');
+  if (!session) throw new Error('No session. Run `npm run telegram:session` (writes TELEGRAM_SESSION into .env).');
 
   const client = new TelegramClient(new sessions.StringSession(session), env.TELEGRAM_API_ID!, env.TELEGRAM_API_HASH!, {
     connectionRetries: 3,
@@ -33,7 +33,7 @@ async function main() {
     }
     const me = (await client.getMe()) as Api.User;
     console.log(`✓ Session authorised: ${[me.firstName, me.lastName].filter(Boolean).join(' ')}${me.username ? ` (@${me.username})` : ''}, id ${me.id}`);
-    console.log(`✓ Encrypted session file: ${env.TELEGRAM_SESSION_FILE}`);
+    console.log(env.TELEGRAM_SESSION ? '✓ Session source: TELEGRAM_SESSION in .env' : `✓ Session source: encrypted file ${env.TELEGRAM_SESSION_FILE}`);
 
     const allowed = parseAllowedUsers(env.TELEGRAM_ALLOWED_USERS);
     console.log(allowed ? `• Replies limited to: ${[...allowed].join(', ')}` : '• Replies: everyone who messages the account privately');

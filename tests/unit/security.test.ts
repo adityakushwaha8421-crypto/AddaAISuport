@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, loadEnv, looksLikeSessionString, secretValues } from '../../src/config/env.js';
 import { decryptSecret, encryptSecret } from '../../src/security/crypto.js';
 import { maskAccount, maskName, maskPhone, shortMaskAccount } from '../../src/security/masking.js';
-import { BootstrapSessionStore, EncryptedFileSessionStore, MemorySessionStore } from '../../src/telegram/user/sessionStore.js';
+import { BootstrapSessionStore, EncryptedFileSessionStore, MemorySessionStore, sessionStoreFromEnv, StringSessionStore } from '../../src/telegram/user/sessionStore.js';
 
 describe('secrets at rest', () => {
   it('round-trips AES-GCM envelopes and detects tampering / wrong keys', () => {
@@ -44,6 +44,23 @@ describe('session bootstrap', () => {
     await file.save('ROTATED');
     expect(await new BootstrapSessionStore(file, fakeSession).load()).toBe('ROTATED');
     expect(await new BootstrapSessionStore(new MemorySessionStore()).load()).toBeUndefined();
+  });
+
+  it('TELEGRAM_SESSION is used as is, and needs no encryption key or file', async () => {
+    let changes = 0;
+    const store = new StringSessionStore(fakeSession, () => changes++);
+    expect(await store.load()).toBe(fakeSession);
+    await store.save(fakeSession);
+    expect(changes).toBe(0);
+    await store.save('ROTATED');
+    expect([changes, await store.load()]).toEqual([1, 'ROTATED']);
+    expect(sessionStoreFromEnv({ TELEGRAM_SESSION: fakeSession, TELEGRAM_SESSION_FILE: 'x' })).toBeInstanceOf(StringSessionStore);
+    expect(sessionStoreFromEnv({ TELEGRAM_SESSION_FILE: 'x', SESSION_ENCRYPTION_KEY: 'k'.repeat(32) })).toBeInstanceOf(EncryptedFileSessionStore);
+    expect(() => sessionStoreFromEnv({ TELEGRAM_SESSION_FILE: 'x' })).toThrow(/telegram:session/);
+    const base = { NODE_ENV: 'production', STORE: 'memory', TELEGRAM_API_ID: '1', TELEGRAM_API_HASH: 'x'.repeat(32) };
+    expect(() => loadEnv({ ...base, TELEGRAM_SESSION: fakeSession })).not.toThrow(); // no SESSION_ENCRYPTION_KEY needed
+    expect(() => loadEnv({ ...base, TELEGRAM_SESSION: 'not-a-session' })).toThrow(/does not look like a Telegram session string/);
+    expect(() => loadEnv(base)).toThrow(/TELEGRAM_SESSION.*or SESSION_ENCRYPTION_KEY/);
   });
 
   it('rejects a session string pasted into SESSION_ENCRYPTION_KEY, with a fix-it message', () => {

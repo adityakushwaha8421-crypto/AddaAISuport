@@ -5,6 +5,7 @@ import { emptyMemory, type UserMemory } from '../domain/memory.js';
 import type { EvidenceItem } from '../domain/evidence.js';
 import { migrate, type Queryable } from './migrate.js';
 import {
+  type SettingsRepo,
   ConflictError,
   type CaseRepo,
   type EvidenceRepo,
@@ -230,6 +231,23 @@ class PgUsers implements UserRepo {
   }
   async saveMemory(userId: string, memory: UserMemory) {
     await this.db.query(`UPDATE users SET memory = $2, updated_at = now() WHERE id = $1`, [userId, json(memory)]);
+  }
+}
+
+class PgSettings implements SettingsRepo {
+  constructor(private db: Queryable) {}
+  async get(key: string) {
+    const { rows } = await this.db.query(`SELECT value FROM settings WHERE key = $1`, [key]);
+    if (!rows[0]) return undefined;
+    const v = rows[0].value;
+    return typeof v === 'string' ? JSON.parse(v) : v;
+  }
+  async set(key: string, value: unknown) {
+    await this.db.query(
+      `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [key, JSON.stringify(value)],
+    );
   }
 }
 
@@ -583,6 +601,7 @@ class PgOutbox implements OutboxRepo {
 
 export class PostgresStore implements Store {
   readonly kind = 'postgres' as const;
+  readonly settings: SettingsRepo;
   readonly users: UserRepo;
   readonly messages: MessageRepo;
   readonly turns: TurnRepo;
@@ -592,6 +611,7 @@ export class PostgresStore implements Store {
   readonly outbox: OutboxRepo;
 
   constructor(readonly pool: PoolLike) {
+    this.settings = new PgSettings(pool);
     this.users = new PgUsers(pool);
     this.messages = new PgMessages(pool);
     this.turns = new PgTurns(pool);

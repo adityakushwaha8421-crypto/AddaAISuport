@@ -25,12 +25,16 @@ In `dev:chat` try: `withdrawal nahi aaya` → `WD-15436-64215` → `credit nahi 
 ## Production setup
 
 1. **Configure** — `cp .env.example .env` and fill it in. Secrets live only in `.env`.
-   Generate `SESSION_ENCRYPTION_KEY` with `openssl rand -hex 32`.
 2. **Database** — PostgreSQL 14+. `npm run db:migrate` (also runs automatically at start-up).
 3. **Telegram account** — the agent runs on your personal Telegram account (MTProto; no bot token).
-   Set `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` (https://my.telegram.org → API development tools)
-   and `SESSION_ENCRYPTION_KEY`, then run `npm run telegram:login` once. The session is stored
-   AES-256-GCM encrypted at `TELEGRAM_SESSION_FILE` (mode 0600) and never printed.
+   Set `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` (https://my.telegram.org → API development tools),
+   then run `npm run telegram:session` once: it asks for the login code (and 2FA password), then
+   writes the resulting **session string** into `.env` as `TELEGRAM_SESSION` (and a copy to
+   `secrets/telegram.session.string`, mode 0600). The agent uses that string directly. The string
+   is a logged-in device: keep `.env` private, never commit or paste it anywhere; pass `--print`
+   only if you need to see it to move it to another machine. Alternative: set
+   `SESSION_ENCRYPTION_KEY` (`openssl rand -hex 32`) and run `npm run telegram:login` to keep the
+   session AES-256-GCM encrypted at `TELEGRAM_SESSION_FILE` instead.
    Run a single instance per account. The agent only answers messages that are still **unread**:
    once you open a chat and read a message, it leaves that message to you. If you type in a
    customer chat from your phone, that customer is yours: the agent closes their unfinished case and
@@ -70,6 +74,19 @@ stays high. Every job is leased and retried with backoff; a worker that dies los
 another one finishes the job without duplicating replies or forwards. `GET /readyz` returns 503
 while an instance drains (SIGTERM finishes in-flight jobs first). Rate limits: `TELEGRAM_SEND_RATE`
 (account-wide/s), `TELEGRAM_CHAT_SEND_RATE` (per chat/s), `OPENAI_MAX_CONCURRENCY`.
+
+## Admin commands
+
+Three commands control the agent. They work for the Telegram user ids listed in `ADMIN_TELEGRAM_IDS`
+(comma-separated) when they message the account, and always for the account owner typing in
+**Saved Messages** (the chat with yourself). From anyone else the same words are just a customer
+message and do nothing.
+
+| Command | Effect | Reply |
+|---|---|---|
+| `/botoff` | Agent OFF, saved permanently (store `settings`, shared by every process): no automatic reply, request, greeting or export confirmation; messages are still stored for the team. | `⛔ Bot is OFF` |
+| `/boton` | Agent ON again, saved permanently. | `✅ Bot is ON` |
+| `/restart` | Safe in-process restart: in-flight jobs finish, Telegram disconnects and reconnects, `.env` and every config file are reloaded, the ON/OFF state is preserved. | `✅ Bot restarted successfully.` (only after the new instance is up) |
 
 ## How it behaves
 

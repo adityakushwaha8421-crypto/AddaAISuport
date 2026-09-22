@@ -66,6 +66,40 @@ export class MemorySessionStore implements SessionStore {
 }
 
 /**
+ * The session string itself, from TELEGRAM_SESSION in .env — the simplest setup: no encryption key,
+ * no session file. Telegram string sessions do not change after login, so a changed session at
+ * runtime is only reported (never written back into .env, never logged).
+ */
+export class StringSessionStore implements SessionStore {
+  private current: string;
+  constructor(session: string, private readonly onChange?: () => void) {
+    this.current = session.trim();
+    if (!this.current) throw new Error('TELEGRAM_SESSION is empty');
+  }
+  async load() {
+    return this.current;
+  }
+  async save(session: string) {
+    if (session === this.current) return;
+    this.current = session;
+    this.onChange?.();
+  }
+  async clear() {
+    /* the string lives in .env: nothing to delete here */
+  }
+}
+
+/**
+ * Which store the configuration calls for: TELEGRAM_SESSION set → the string, as is; otherwise the
+ * encrypted session file (needs SESSION_ENCRYPTION_KEY, written by `npm run telegram:login`).
+ */
+export function sessionStoreFromEnv(env: { TELEGRAM_SESSION?: string; TELEGRAM_SESSION_FILE: string; SESSION_ENCRYPTION_KEY?: string }, onStringChange?: () => void): SessionStore {
+  if (env.TELEGRAM_SESSION?.trim()) return new StringSessionStore(env.TELEGRAM_SESSION, onStringChange);
+  if (!env.SESSION_ENCRYPTION_KEY) throw new Error('Set TELEGRAM_SESSION (npm run telegram:session) or SESSION_ENCRYPTION_KEY + npm run telegram:login');
+  return new EncryptedFileSessionStore(env.TELEGRAM_SESSION_FILE, env.SESSION_ENCRYPTION_KEY);
+}
+
+/**
  * Uses the encrypted session file when present; otherwise bootstraps from a session string
  * supplied via TELEGRAM_SESSION and immediately stores it (encrypted) in the file.
  */

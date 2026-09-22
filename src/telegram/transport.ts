@@ -36,6 +36,8 @@ export interface TransportHandlers {
   onSupportMessage?(msg: SupportGroupMessage): Promise<void>;
   /** A human sent a message from our own account → the chat is theirs until they hand it back. */
   onOwnOutgoing?(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
+  /** The account owner typed in Saved Messages (a chat with themselves): admin commands live there. */
+  onAdminCommand?(ev: { chatId: string; messageId: number; fromUserId: string; text?: string }): Promise<void>;
   /** The export bot wrote to us (e.g. a payment confirmation). */
   onExportMessage?(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
   /** A human forwarded a customer's message to the export bot from the account. */

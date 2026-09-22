@@ -171,4 +171,14 @@ CREATE INDEX jobs_key_idx ON jobs (ordering_key, status);
 CREATE INDEX jobs_lease_idx ON jobs (status, leased_until);
 `,
   },
+  {
+    id: '003_settings',
+    sql: `
+CREATE TABLE settings (
+  key        text PRIMARY KEY,
+  value      jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+`,
+  },
 ];

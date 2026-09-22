@@ -1,8 +1,10 @@
 import type { Logger } from 'pino';
 import { ResilientAdminGateway } from './admin/resilient.js';
 import { CaseService } from './cases/service.js';
+import { AdminCommands, type AdminCommandEvent } from './control/adminCommands.js';
+import { BotSwitch } from './control/botSwitch.js';
 import type { AdminGateway } from './domain/admin.js';
-import type { InboundMessage } from './domain/messages.js';
+import { messageBody, type InboundMessage } from './domain/messages.js';
 import { EvidenceService } from './evidence/service.js';
 import type { FrameExtractor } from './evidence/video.js';
 import type { VisionAnalyzer } from './evidence/vision.js';
@@ -57,6 +59,10 @@ export interface AppConfig {
   jobMaxAttempts?: number;
   /** Runner name in logs and leases. */
   instanceName?: string;
+  /** Telegram user ids allowed to run /boton, /botoff, /restart by messaging the account. */
+  adminIds?: string[];
+  /** Given by the supervisor: perform a safe restart and confirm to that chat afterwards. */
+  onRestart?: (reply: { chatId: string }) => void;
 }
 
 export interface AppComponents {
@@ -82,10 +88,15 @@ export interface AppComponents {
   readState?: ReadStateApi;
   /** Override the interpreter (tests); defaults to LLM with lexical fallback. */
   interpreter?: Interpreter;
+  /** The ON/OFF switch (defaults to one over the store's settings). */
+  botSwitch?: BotSwitch;
 }
 
 export interface App {
   processor: TurnProcessor;
+  /** ON/OFF, persisted; OFF = no automatic reply of any kind. */
+  botSwitch: BotSwitch;
+  adminCommands: AdminCommands;
   handoff: HandoffService;
   worker: HandoffWorker;
   relay: SupportRelay;
@@ -108,6 +119,8 @@ export interface App {
   onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
   /** A human forwarded a customer's evidence to the export bot by hand. */
   onExportForward(ev: ExportForwardEvent): Promise<void>;
+  /** The account owner typed in Saved Messages (admin console). */
+  onAdminCommand(ev: AdminCommandEvent): Promise<void>;
   /** Queue turns for inbound messages a crash left unprocessed (persisted, never queued). */
   recover(sinceMinutes: number): Promise<number>;
 }
@@ -158,6 +171,8 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
           })
       : undefined,
   });
+  const botSwitch = c.botSwitch ?? new BotSwitch({ settings: c.store.settings, log: c.log, clock: c.clock });
+  const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart });
   const exporter = cfg.exportChatId ? new EvidenceExporter({ store: c.store, transport: c.transport, exportChatId: cfg.exportChatId, log: c.log, metrics: c.metrics, clock: c.clock }) : undefined;
   const composer = new ResponseComposer({ llm: c.llm, mode: cfg.responseMode, style: c.style, log: c.log, metrics: c.metrics });
   const chatFolders = c.chatFolders ?? (c.folders && cfg.chatFolders
@@ -177,6 +192,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     folders: chatFolders,
     readState: c.readState,
     exporter,
+    botSwitch,
     knowledge: c.knowledge,
     locks,
     patterns: c.patterns,
@@ -187,9 +203,9 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   });
   const worker = new HandoffWorker({
     store: c.store, handoff, outbox, locks, log: c.log, maxAttempts: cfg.handoffMaxAttempts, idleCloseHours: cfg.idleCloseHours, clock: c.clock,
-    exporter, composer,
+    exporter, composer, botSwitch,
   });
-  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log });
+  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log, botSwitch });
   const manualExports = cfg.exportChatId
     ? new ManualExports({ store: c.store, outbox, transport: c.transport, exportChatId: cfg.exportChatId, locks, log: c.log, metrics: c.metrics, clock: c.clock })
     : undefined;
@@ -246,10 +262,15 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   };
 
   return {
-    processor, handoff, worker, relay, confirmations, manualExports, outbox, evidence, admin, locks, queue, runner, chatFolders,
+    processor, handoff, worker, relay, confirmations, manualExports, outbox, evidence, admin, locks, queue, runner, chatFolders, botSwitch, adminCommands,
     async onMessage(msg) {
+      // An authorised admin's /boton, /botoff or /restart is acted on at once and never enters the customer pipeline.
+      if (await adminCommands.handle({ chatId: msg.chatId, messageId: msg.messageId, fromUserId: msg.userId, text: messageBody(msg) })) return;
       manualExports?.noteInbound(msg); // so a hand-forwarded file can be traced back to its customer
       if (await processor.receive(msg)) await queueTurn(msg.chatId, msg.messageId, now());
+    },
+    async onAdminCommand(ev) {
+      await adminCommands.handle({ ...ev, owner: true });
     },
     async onSupportMessage(msg) {
       await queue.enqueue({ type: 'support_message', orderingKey: `support:${msg.chatId}`, payload: { ...msg }, idempotencyKey: `support:${msg.chatId}:${msg.messageId}` });

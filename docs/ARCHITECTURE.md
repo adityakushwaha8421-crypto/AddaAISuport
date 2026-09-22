@@ -231,6 +231,19 @@ overrides a model that shrugged or picked the other side. Inside a case, "paise 
 follow-up of that case, never a switch of type. `tests/unit/moneyDirection.test.ts` and
 `tests/conversations/intent-variations.test.ts` hold the phrasing tables.
 
+### 3.10c Admin commands and the supervisor
+`/boton`, `/botoff` and `/restart` (`control/adminCommands.ts`) are accepted from the Telegram ids
+in `ADMIN_TELEGRAM_IDS` messaging the account, and from the account owner in Saved Messages (the
+transport routes the owner's own messages there to `onAdminCommand`); from anyone else they are
+ordinary customer text. The ON/OFF state is a row in the `settings` table (`control/botSwitch.ts`),
+so every worker sees it and it survives restarts; OFF makes every turn end before any case work
+(reason `bot_off`), holds export retries and suppresses the "deposit solved" message (the case is
+still closed). `/restart` goes to the process supervisor (`control/supervisor.ts`): the running
+agent is stopped cleanly (jobs drained, Telegram disconnected, store closed), `.env` is re-read,
+a fresh agent is booted in the same process under the same instance lock with the ON/OFF state
+carried over, and only then the admin is told "✅ Bot restarted successfully." Boot failures are
+retried with backoff.
+
 ### 3.11 Degraded mode
 If OpenAI is unavailable the lexical interpreter and templates keep the bot functional (with lower
 confidence → more conservative decisions). If the admin panel is unavailable, verification is

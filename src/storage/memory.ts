@@ -3,6 +3,7 @@ import { ACTIVE_STATUSES, emptyFacts, type CaseRecord } from '../domain/cases.js
 import { emptyMemory, type UserMemory } from '../domain/memory.js';
 import type { EvidenceItem } from '../domain/evidence.js';
 import {
+  type SettingsRepo,
   ConflictError,
   type CaseRepo,
   type EvidenceRepo,
@@ -280,8 +281,19 @@ class MemoryOutbox implements OutboxRepo {
   }
 }
 
+class MemorySettings implements SettingsRepo {
+  readonly rows = new Map<string, unknown>();
+  async get(key: string) {
+    return this.rows.get(key);
+  }
+  async set(key: string, value: unknown) {
+    this.rows.set(key, structuredClone(value));
+  }
+}
+
 export class MemoryStore implements Store {
   readonly kind = 'memory' as const;
+  settings = new MemorySettings();
   users = new MemoryUsers();
   messages = new MemoryMessages();
   turns = new MemoryTurns();

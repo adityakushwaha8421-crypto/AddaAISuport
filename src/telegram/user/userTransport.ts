@@ -317,14 +317,20 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
     if (!ev.isPrivate) return;
 
     if (m.out) {
-      // Our own account wrote in this chat. If we didn't send it, a human took over.
-      if (!handlers.onOwnOutgoing) return;
+      // Our own account wrote in this chat. If we didn't send it, a human did.
+      if (!handlers.onOwnOutgoing && !handlers.onAdminCommand) return;
       // The update can arrive before our own sendMessage() call has returned the id: wait for
       // every send in flight to this chat (bounded), then decide.
       const pending = [...(this.inFlight.get(chatId) ?? [])];
       if (pending.length) await Promise.race([Promise.allSettled(pending), new Promise((r) => setTimeout(r, 15_000))]);
       else await new Promise((r) => setTimeout(r, 1500));
       if (this.sentByUs.get(chatId)?.has(m.id)) return;
+      if (chatId === this.selfId) {
+        // Saved Messages: the owner's own console, never a customer chat.
+        await handlers.onAdminCommand?.({ chatId, messageId: m.id, fromUserId: this.selfId, text: m.message });
+        return;
+      }
+      if (!handlers.onOwnOutgoing) return;
       this.opts.log.info({ chat: chatId, messageId: m.id }, 'a human wrote in this chat from the account (not a bot message)');
       await handlers.onOwnOutgoing({ chatId, messageId: m.id, text: m.message });
       return;

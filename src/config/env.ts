@@ -26,10 +26,13 @@ const envSchema = z.object({
   TELEGRAM_PHONE: optionalString,
   TELEGRAM_SESSION_FILE: z.string().default('secrets/telegram.session.enc'),
   /** Optional existing string session (GramJS/Telethon). Imported into the encrypted session file on first start. */
+  /** The account's session string (from `npm run telegram:session`). When set, it is used as is and no session file or encryption key is needed. */
   TELEGRAM_SESSION: optionalString,
   SESSION_ENCRYPTION_KEY: optionalString,
   /** Comma-separated user ids / @usernames. When set, ONLY these chats get AI replies (testing / gradual rollout). */
   TELEGRAM_ALLOWED_USERS: optionalString,
+  /** Comma-separated Telegram user ids allowed to run /boton, /botoff and /restart by messaging the account. The account owner can always run them in Saved Messages. */
+  ADMIN_TELEGRAM_IDS: optionalString,
   /** Personal account: don't auto-reply to people saved in the account's contacts (friends, family, team). */
   TELEGRAM_IGNORE_CONTACTS: bool(true),
   SUPPORT_GROUP_CHAT_ID: optionalString,
@@ -145,8 +148,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, require: EnvReq
   if (env.NODE_ENV !== 'test') {
     if (require.includes('telegram') && env.ROLE !== 'worker') {
       if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) problems.push('TELEGRAM_API_ID and TELEGRAM_API_HASH are required (https://my.telegram.org)');
-      if (!env.SESSION_ENCRYPTION_KEY) problems.push('SESSION_ENCRYPTION_KEY is required');
-      else if (looksLikeSessionString(env.SESSION_ENCRYPTION_KEY)) {
+      if (env.TELEGRAM_SESSION && !looksLikeSessionString(env.TELEGRAM_SESSION)) {
+        problems.push('TELEGRAM_SESSION does not look like a Telegram session string (run `npm run telegram:session` to create one)');
+      }
+      if (!env.TELEGRAM_SESSION && !env.SESSION_ENCRYPTION_KEY) problems.push('Set TELEGRAM_SESSION (run `npm run telegram:session`) or SESSION_ENCRYPTION_KEY (then `npm run telegram:login`)');
+      else if (env.SESSION_ENCRYPTION_KEY && looksLikeSessionString(env.SESSION_ENCRYPTION_KEY)) {
         problems.push('SESSION_ENCRYPTION_KEY contains a Telegram session string: move it to TELEGRAM_SESSION and set SESSION_ENCRYPTION_KEY to a random key (openssl rand -hex 32)');
       }
     }

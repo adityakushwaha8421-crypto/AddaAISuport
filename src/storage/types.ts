@@ -209,8 +209,15 @@ export interface OutboxRepo {
 
 // ── Aggregate ──────────────────────────────────────────────────────────────
 
+/** Small durable key/value settings shared by every process (e.g. the bot's ON/OFF switch). */
+export interface SettingsRepo {
+  get(key: string): Promise<unknown | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
 export interface Store {
   readonly kind: 'memory' | 'postgres';
+  settings: SettingsRepo;
   users: UserRepo;
   messages: MessageRepo;
   turns: TurnRepo;
