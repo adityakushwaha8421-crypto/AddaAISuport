@@ -59,6 +59,8 @@ export interface UserTransportOptions {
   /** Outbound messages per second, account-wide and per chat (Telegram throttles beyond ~30/s). */
   sendRate?: number;
   chatSendRate?: number;
+  /** Grace period before deciding a message in a chat with no send in flight was typed by a human (tests shorten it). */
+  ownSendGraceMs?: number;
 }
 
 const FLOOD_WAIT = /FLOOD_WAIT_(\d+)/;
@@ -283,6 +285,16 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
     else this.opts.log.error({ err }, msg);
   }
 
+  /**
+   * An update for our own message can arrive before our sendMessage() call has returned its id:
+   * wait for every send in flight to this chat (bounded) before deciding whether we wrote it.
+   */
+  private async settleOwnSends(chatId: string): Promise<void> {
+    const pending = [...(this.inFlight.get(chatId) ?? [])];
+    if (pending.length) await Promise.race([Promise.allSettled(pending), new Promise((r) => setTimeout(r, 15_000))]);
+    else await new Promise((r) => setTimeout(r, this.opts.ownSendGraceMs ?? 1500));
+  }
+
   private async onEvent(ev: NewMessageEvent, handlers: TransportHandlers) {
     const m = ev.message;
     const chatId = m.chatId?.toString();
@@ -316,21 +328,21 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
     }
     if (!ev.isPrivate) return;
 
+    if (chatId === this.selfId) {
+      // Saved Messages (the chat with ourselves) is the owner's console, never a customer chat —
+      // and Telegram does not flag those messages as outgoing, so this comes before the `out` check.
+      if (!handlers.onAdminCommand) return;
+      await this.settleOwnSends(chatId);
+      if (this.sentByUs.get(chatId)?.has(m.id)) return; // our own reply ("✅ Bot is ON")
+      await handlers.onAdminCommand({ chatId, messageId: m.id, fromUserId: this.selfId, text: m.message });
+      return;
+    }
+
     if (m.out) {
       // Our own account wrote in this chat. If we didn't send it, a human did.
-      if (!handlers.onOwnOutgoing && !handlers.onAdminCommand) return;
-      // The update can arrive before our own sendMessage() call has returned the id: wait for
-      // every send in flight to this chat (bounded), then decide.
-      const pending = [...(this.inFlight.get(chatId) ?? [])];
-      if (pending.length) await Promise.race([Promise.allSettled(pending), new Promise((r) => setTimeout(r, 15_000))]);
-      else await new Promise((r) => setTimeout(r, 1500));
-      if (this.sentByUs.get(chatId)?.has(m.id)) return;
-      if (chatId === this.selfId) {
-        // Saved Messages: the owner's own console, never a customer chat.
-        await handlers.onAdminCommand?.({ chatId, messageId: m.id, fromUserId: this.selfId, text: m.message });
-        return;
-      }
       if (!handlers.onOwnOutgoing) return;
+      await this.settleOwnSends(chatId);
+      if (this.sentByUs.get(chatId)?.has(m.id)) return;
       this.opts.log.info({ chat: chatId, messageId: m.id }, 'a human wrote in this chat from the account (not a bot message)');
       await handlers.onOwnOutgoing({ chatId, messageId: m.id, text: m.message });
       return;
