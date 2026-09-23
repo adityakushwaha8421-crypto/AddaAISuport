@@ -33,6 +33,8 @@ export interface ProcessorConfig {
   historyMessages: number;
   /** Customers' IANA timezone; a greeting goes out only on a customer's first message of their day. */
   customerTimezone?: string;
+  /** request_only: one evidence request per deposit/withdrawal case, then silence; conversational: the full dialogue. */
+  caseReplies?: 'request_only' | 'conversational';
   reopenWindowHours: number;
   workflow: WorkflowConfig;
 }
@@ -182,10 +184,11 @@ export class TurnProcessor {
       // message a human already read on Telegram — whatever it says, it is theirs to answer.
       const takenOver = !!(user.humanTakeoverUntil && user.humanTakeoverUntil > now);
       let seen = await this.seenByHuman(chatId, latestId, tlog);
-      if (!takenOver && !seen) void this.deps.transport.sendTyping(chatId).catch(() => undefined);
       const memoryBefore = JSON.stringify(user.memory);
 
       const { cases, focused } = await this.deps.cases.load(user);
+      // No "typing…" either in a case that has had its one request: the bot is out of that conversation.
+      if (!takenOver && !seen && !(focused && this.silentCase(focused))) void this.deps.transport.sendTyping(chatId).catch(() => undefined);
       const signals = computeSignals(raw.map(messageBody), {
         awaitingPassword: cases.some((c) => c.facts.pendingPdf),
         patterns: this.deps.patterns,
@@ -290,6 +293,24 @@ export class TurnProcessor {
         const res = await this.runCase(c, applied, interp, signals, ingested, reply, raw, user, history, now, trace);
         out = res.out;
         c = res.c;
+        // Request-only mode: a deposit/withdrawal case gets exactly one message — the evidence request —
+        // and after that the bot says nothing in it (no acks, reminders, choices, status, confirmations).
+        // The work still happens (facts absorbed, files exported, tickets filed); the team talks to the customer.
+        if (this.deps.cfg.caseReplies !== 'conversational' && (c.type === 'deposit' || c.type === 'withdrawal')) {
+          const request = out.acts.find((a): a is Extract<Act, { type: 'ask' }> => a.type === 'ask' && a.mode === 'initial' && !a.slots.includes('pdf_password') && !a.slots.includes('withdrawal_choice'));
+          if (c.facts.requestSentAt) {
+            trace.requestOnly = 'silent';
+            out.acts = [];
+          } else if (request) {
+            trace.requestOnly = 'request';
+            out.acts = [request];
+            c.facts.requestSentAt = now.toISOString();
+            c = await store.cases.save(c);
+          } else {
+            trace.requestOnly = 'nothing_to_request';
+            out.acts = [];
+          }
+        }
       } else {
         out = this.general(interp, signals, ingested, visit.firstOfDay);
       }
@@ -363,6 +384,11 @@ export class TurnProcessor {
   }
 
   /** A support issue of a different kind than the customer's latest case: not the one the human is on. */
+  /** A deposit/withdrawal case that has had its one evidence request, in request-only mode. */
+  private silentCase(c: CaseRecord): boolean {
+    return this.deps.cfg.caseReplies !== 'conversational' && (c.type === 'deposit' || c.type === 'withdrawal') && !!c.facts.requestSentAt;
+  }
+
   /** Unknown read state counts as unread: a fresh message is unread unless Telegram says otherwise. */
   private async seenByHuman(chatId: string, messageId: number, tlog: Logger): Promise<boolean> {
     if (!this.deps.readState) return false;
@@ -451,11 +477,16 @@ export class TurnProcessor {
 
     const ids = [...new Set([...c.facts.evidenceIds, ...ingested.map((r) => r.evidence.id), ...(c.facts.pendingPdf ? [c.facts.pendingPdf.evidenceId] : [])])];
     const caseEvidence = await store.evidence.listByIds(ids);
+    // Request-only mode: nothing after the one request is ever sent, so nothing counts as nagging —
+    // no ask limit, and a frustrated customer is not a reason to abandon collecting for the team.
+    const requestOnly = this.deps.cfg.caseReplies !== 'conversational' && (c.type === 'deposit' || c.type === 'withdrawal');
+    const wfInterp = requestOnly ? { ...interp, claims: { ...interp.claims, frustrated: false } } : interp;
+    const wfCfg = requestOnly ? { ...this.deps.cfg.workflow, maxAsksPerSlot: Number.POSITIVE_INFINITY } : this.deps.cfg.workflow;
     const out = await this.deps.workflows[c.type].run({
-      c, isNew: applied.isNew, resumed: applied.resumed, interp, signals, turnEvidence: ingested, caseEvidence, reply, unlock, now,
+      c, isNew: applied.isNew, resumed: applied.resumed, interp: wfInterp, signals, turnEvidence: ingested, caseEvidence, reply, unlock, now,
       lastMessageId: raw[raw.length - 1]!.messageId, turnMessages: raw.map((m) => ({ messageId: m.messageId, text: messageBody(m) })),
       memory: user.memory,
-      deps: { admin: this.deps.admin, cfg: this.deps.cfg.workflow, log: this.deps.log },
+      deps: { admin: this.deps.admin, cfg: wfCfg, log: this.deps.log },
     });
 
     if (out.ticketUpdate) {
@@ -487,8 +518,8 @@ export class TurnProcessor {
         trace.export = r.ok ? { ok: true } : { ok: false, error: r.error };
         if (r.ok) {
           exported = true;
-          // Verified delivery, and the confirmation goes out once per case: VERIFIED → CONFIRMED.
-          if (c.facts.export!.status !== 'confirmed') {
+          // Verified delivery, and (conversational mode) the confirmation goes out once per case: VERIFIED → CONFIRMED.
+          if (c.facts.export!.status !== 'confirmed' && this.deps.cfg.caseReplies === 'conversational') {
             c.facts.export!.status = 'confirmed';
             out.acts.push({ type: 'export_confirmed' });
           }

@@ -181,6 +181,8 @@ export interface HarnessOptions {
   maxWaitMs?: number;
   /** Telegram ids allowed to run /boton, /botoff, /restart. */
   adminIds?: string[];
+  /** request_only (production default): one evidence request per money case, then silence. */
+  caseReplies?: 'request_only' | 'conversational';
   onRestart?: (reply: { chatId: string }) => void;
 }
 
@@ -348,6 +350,7 @@ export class Harness {
         jobLeaseMs: opts.jobLeaseMs,
         instanceName: opts.instanceName,
         adminIds: opts.adminIds,
+        caseReplies: opts.caseReplies ?? 'request_only',
         onRestart: opts.onRestart,
         responseMode: opts.responseMode ?? 'template',
         takeoverMinutes: 0, // like production: a human's chat stays theirs until they hand it back

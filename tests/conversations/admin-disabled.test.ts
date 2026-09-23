@@ -15,7 +15,7 @@ const CONFIRMED = /shared with our team successfully/;
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ adminGateway: new DisabledAdminGateway() });
+  h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
   h.vision.set('pay500', SCREENSHOTS.payment500);
   h.vision.set('pay500-later', SCREENSHOTS.payment500);
   h.vision.set('wdhist', SCREENSHOTS.withdrawalHistory);

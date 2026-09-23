@@ -122,6 +122,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       exportChatId: env.EXPORT_BOT_ID,
       historyMessages: env.HISTORY_MESSAGES,
       customerTimezone: env.CUSTOMER_TIMEZONE,
+      caseReplies: env.CASE_REPLIES,
       reopenWindowHours: env.CASE_IDLE_CLOSE_HOURS,
       workflow: { maxAsksPerSlot: env.MAX_ASKS_PER_SLOT, withdrawalSlaHours: env.WITHDRAWAL_PROCESSING_SLA_HOURS, depositLookbackDays: 30, refreshMinutes: 10, maxPasswordAttempts: 3 },
       debounceMs: env.TURN_DEBOUNCE_MS,

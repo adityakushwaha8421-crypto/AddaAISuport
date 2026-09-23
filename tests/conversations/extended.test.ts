@@ -13,7 +13,7 @@ const WITHDRAWAL_REQUEST = `Sir, withdrawal check karne ke liye ye details bhej 
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ fixtures: ADMIN_FIXTURES });
+  h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
   h.vision.set('pay500', SCREENSHOTS.payment500).set('wdHistory', SCREENSHOTS.withdrawalHistory).set('selfie', SCREENSHOTS.selfie);
 });
 
@@ -238,7 +238,7 @@ describe('statement edge cases', () => {
 
 describe('general questions', () => {
   it('answers from the knowledge base without touching cases', async () => {
-    const hk = new Harness({ fixtures: ADMIN_FIXTURES, knowledge: [{ id: 'l', keywords: ['lineup'], answer: 'Sir, lineup match se pehle app ke contest page par dikhta hai 👍' }] });
+    const hk = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, knowledge: [{ id: 'l', keywords: ['lineup'], answer: 'Sir, lineup match se pehle app ke contest page par dikhta hai 👍' }] });
     const u = hk.user('x7');
     expect(await u.say('Sir lineup kab aayega')).toMatch(/contest page/);
     expect(await hk.casesOf('x7')).toHaveLength(0);
@@ -297,7 +297,7 @@ describe('LLM interpreter path', () => {
       gist: 'Withdrawal from yesterday not received', confidence: 0.92,
       proposed: { registration_number: null, withdrawal_id: 'WD-15436-64215', order_id: null, utr: null, amount: null }, // hallucinated
     }));
-    const hl = new Harness({ fixtures: ADMIN_FIXTURES, llm });
+    const hl = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, llm });
     const u = hl.user('x9');
     const r = await u.say('kal wala paisa bank me nahi pahuncha');
     expect(r).toMatch(/Withdrawal ID ya withdrawal history/); // did not use the invented ID

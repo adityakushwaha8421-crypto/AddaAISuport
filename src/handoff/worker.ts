@@ -24,6 +24,8 @@ export interface WorkerOptions {
   maxExportAttempts?: number;
   /** While OFF, every background duty waits. */
   botSwitch?: { isOn(): Promise<boolean> };
+  /** Tell the customer when a delayed export lands (conversational mode); request-only mode stays silent. */
+  notifyCustomer?: boolean;
 }
 
 /**
@@ -113,14 +115,14 @@ export class HandoffWorker {
           c.facts.handoffReason = reason;
           c.facts.lastAsked = [];
           c.missing = [];
-          if (c.facts.export!.status !== 'confirmed') {
+          if (c.facts.export!.status !== 'confirmed' && this.o.notifyCustomer) {
             c.facts.export!.status = 'confirmed';
             const lang = user.preferredLanguage ?? 'hinglish';
             const composed = await composer.compose({ acts: [{ type: 'export_confirmed' }], language: lang, userText: '', history: [], address: addressTerm(user.memory), brief: prefersBrief(user.memory) });
             await this.o.outbox.send({ key: `export:${c.id}`, chatId: c.chatId, userId: c.userId, text: composed.text, meta: { kind: 'reply', html: true, caseId: c.id, caseType: c.type, acts: ['export_confirmed'] } });
           }
           c.status = 'escalated'; // the team has it through the export bot: no ticket
-          log.info({ case: c.id, attempts: c.facts.export!.attempts }, 'delayed export delivered; customer confirmed');
+          log.info({ case: c.id, attempts: c.facts.export!.attempts, customerTold: !!this.o.notifyCustomer }, 'delayed export delivered');
         }
         try {
           await store.cases.save(c);

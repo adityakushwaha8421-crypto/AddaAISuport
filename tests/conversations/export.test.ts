@@ -23,7 +23,7 @@ const confirmationByMobile = (mobile: string) => `✅ PAYMENT CONFIRMED\n\n📱 
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ adminGateway: new DisabledAdminGateway() }); // the live setup: nothing can be verified automatically
+  h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() }); // the live setup: nothing can be verified automatically
   h.vision.set('pay500', SCREENSHOTS.payment500);
   h.vision.set('pay500-later', SCREENSHOTS.payment500); // a second, different file with the same content
   h.vision.set('wdhist', SCREENSHOTS.withdrawalHistory);
@@ -275,7 +275,7 @@ describe('export failures', () => {
   });
 
   it('without an export bot configured, handoffs work as before (silent ticket)', async () => {
-    const d = new Harness({ adminGateway: new DisabledAdminGateway(), exportBot: null });
+    const d = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway(), exportBot: null });
     d.vision.set('pay500', SCREENSHOTS.payment500);
     const u = d.user('no-bot');
     await u.say('deposit nahi aaya 9810822372');
@@ -359,7 +359,7 @@ describe('withdrawal', () => {
 
 describe('with the admin panel connected', () => {
   it('a verified deposit is resolved, never exported', async () => {
-    const p = new Harness({ fixtures: ADMIN_FIXTURES });
+    const p = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
     p.vision.set('pay500', SCREENSHOTS.payment500);
     const u = p.user('verified');
     await u.say('deposit nahi aaya 9810822372');

@@ -14,7 +14,7 @@ const SMALL_TALK = ['hi', 'hello', 'hey', 'ok', 'okay', 'thanks', 'hi sir', 'kai
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ fixtures: ADMIN_FIXTURES });
+  h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
   h.vision.set('pay500', SCREENSHOTS.payment500);
 });
 
@@ -47,7 +47,7 @@ describe('after the request, small talk gets no reply', () => {
   });
 
   it('a case with the team (admin panel disabled) waits the same way', async () => {
-    const d = new Harness({ adminGateway: new DisabledAdminGateway() });
+    const d = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
     d.vision.set('pay500', SCREENSHOTS.payment500);
     const u = d.user('esc');
     await u.say('deposit nahi aaya 9810822372');
@@ -99,7 +99,7 @@ describe('a human reply', () => {
   });
 
   it('from the support group closes the case too', async () => {
-    const d = new Harness({ adminGateway: new DisabledAdminGateway() });
+    const d = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
     const u = d.user('relay');
     await u.say('withdrawal nahi aaya WD-15436-64215, agent se baat karao'); // wants a person: a support-group ticket
     const ticket = d.supportMessages[0]!;

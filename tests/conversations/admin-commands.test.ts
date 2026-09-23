@@ -12,7 +12,7 @@ let h: Harness;
 let restart: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   restart = vi.fn();
-  h = new Harness({ adminGateway: new DisabledAdminGateway(), adminIds: [ADMIN], onRestart: restart });
+  h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway(), adminIds: [ADMIN], onRestart: restart });
 });
 
 describe('admin commands', () => {
@@ -61,7 +61,7 @@ describe('admin commands', () => {
   });
 
   it('the account owner can run the commands from Saved Messages without being listed', async () => {
-    const own = new Harness({ adminGateway: new DisabledAdminGateway() }); // no ADMIN_TELEGRAM_IDS at all
+    const own = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() }); // no ADMIN_TELEGRAM_IDS at all
     await own.app.onAdminCommand({ chatId: 'self', messageId: 1, fromUserId: 'self', text: '/botoff' });
     expect(await own.app.botSwitch.isOn()).toBe(false);
     expect(own.transport.sent.at(-1)).toMatchObject({ chatId: 'self', text: REPLIES.off });

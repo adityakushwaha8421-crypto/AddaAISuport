@@ -27,7 +27,7 @@ export function parseConfirmation(text: string): Confirmation | undefined {
 
 export class ExportConfirmations {
   constructor(
-    private readonly o: { store: Store; outbox: OutboxSender; composer: ResponseComposer; locks: KeyedMutex; log: Logger },
+    private readonly o: { store: Store; outbox: OutboxSender; composer: ResponseComposer; locks: KeyedMutex; log: Logger; notifyCustomer?: boolean },
   ) {}
 
   async onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<'solved' | 'duplicate' | 'ignored'> {
@@ -52,16 +52,18 @@ export class ExportConfirmations {
         return 'duplicate';
       }
       const lang = user.preferredLanguage ?? 'hinglish';
-      const composed = await this.o.composer.compose({
-        acts: [{ type: 'deposit_solved' }], language: lang, userText: '', history: [], address: addressTerm(user.memory), brief: prefersBrief(user.memory),
-      });
-      const sent = await this.o.outbox.send({
-        key: `solved:${c.id}`, chatId: user.chatId, userId: user.id, text: composed.text,
-        meta: { kind: 'reply', html: true, caseId: c.id, caseType: 'deposit', acts: ['deposit_solved'] },
-      });
-      if (!sent.sent) {
-        log.warn({ case: c.id }, 'resolution message could not be sent; case left pending for retry');
-        return 'ignored';
+      if (this.o.notifyCustomer) {
+        const composed = await this.o.composer.compose({
+          acts: [{ type: 'deposit_solved' }], language: lang, userText: '', history: [], address: addressTerm(user.memory), brief: prefersBrief(user.memory),
+        });
+        const sent = await this.o.outbox.send({
+          key: `solved:${c.id}`, chatId: user.chatId, userId: user.id, text: composed.text,
+          meta: { kind: 'reply', html: true, caseId: c.id, caseType: 'deposit', acts: ['deposit_solved'] },
+        });
+        if (!sent.sent) {
+          log.warn({ case: c.id }, 'resolution message could not be sent; case left pending for retry');
+          return 'ignored';
+        }
       }
       c.status = 'resolved';
       c.step = 'solved';
@@ -71,7 +73,7 @@ export class ExportConfirmations {
       await store.cases.save(c);
       const ticket = await store.tickets.findOpenByCase(c.id);
       if (ticket) await store.tickets.update(ticket.id, { status: 'closed' });
-      log.info({ case: c.id, userId: user.id, language: lang, matchedBy: parsed.userId ? 'user_id' : msg.replyToMessageId ? 'reply' : 'mobile' }, 'deposit solved: customer told');
+      log.info({ case: c.id, userId: user.id, language: lang, matchedBy: parsed.userId ? 'user_id' : msg.replyToMessageId ? 'reply' : 'mobile', customerTold: !!this.o.notifyCustomer }, 'deposit solved');
       return 'solved';
     });
   }

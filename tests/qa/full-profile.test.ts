@@ -23,7 +23,7 @@ const vision = (harness: Harness) =>
     .set('techErr', analysisOf({ category: 'technical_screenshot', transcript: 'Something went wrong. Error code 502', technical: { error_text: 'Error code 502', screen: 'contest join' } }));
 
 beforeEach(() => {
-  h = new Harness({ fixtures: ADMIN_FIXTURES });
+  h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
   vision(h);
 });
 
@@ -190,7 +190,7 @@ describe('QA · persistence across an application restart', () => {
   let store: Store;
   beforeEach(async () => {
     store = await pgMemFactory.create();
-    h = new Harness({ fixtures: ADMIN_FIXTURES, store });
+    h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, store });
     vision(h);
   });
 

@@ -214,6 +214,18 @@ customer's. As a last check the processor compares the composed reply with the b
 message in the chat: the same words, prompted by a turn that brought nothing new (no file, no
 identifier, no reference, no question about what to send), are a repeat and are not sent.
 
+### 3.10d Request-only cases
+`CASE_REPLIES=request_only` (the default) turns every deposit/withdrawal case into a single
+customer-facing message. After routing and the workflow run, the processor keeps only an `ask` of
+mode `initial` (never `pdf_password` or `withdrawal_choice`) the first time one appears, records
+`facts.requestSentAt`, and from then on empties the act list for that case: acknowledgements,
+reminders, row choices, statement notices, status, "kya bhejna hai" lists, the export confirmation
+and the "deposit solved" message are all dropped (the export state stays `verified`, the solved case
+is still resolved). The workflows run with an unlimited ask budget and with `frustrated` cleared, so
+nothing that is never sent can push a case to a human; a customer asking for a person or refusing
+documents still becomes a support-group ticket, and the typing indicator is not shown in a case
+that has had its request. `conversational` restores the previous behaviour end to end.
+
 ### 3.10a Deposit or withdrawal: the direction of the money
 Customers almost never write "deposit" or "withdrawal". `nlu/moneyDirection.ts` reads which way the
 money was meant to move from Hinglish, Hindi or English phrasing (misspellings included): money

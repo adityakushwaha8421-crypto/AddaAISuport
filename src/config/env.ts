@@ -44,6 +44,12 @@ const envSchema = z.object({
   HUMAN_TAKEOVER_MINUTES: int(0),
   /** Typed by a human in a customer chat to hand it back to the bot (deleted again, the customer never sees it). "/bot" always works too. */
   AI_RESUME_COMMAND: z.string().trim().min(1).default('/ai'),
+  /**
+   * What the bot says inside a deposit/withdrawal case. request_only (default): exactly one evidence-request
+   * message, then silence — no acknowledgements, reminders, choices, status or confirmations; the team takes
+   * it from there. conversational: the full dialogue (acks, follow-ups, export/solved confirmations).
+   */
+  CASE_REPLIES: z.enum(['request_only', 'conversational']).default('request_only'),
   /** Customers' timezone (IANA name): a greeting goes out only on a customer's first message of their calendar day. */
   CUSTOMER_TIMEZONE: z.string().trim().min(1).default('Asia/Kolkata'),
   /** Reply only to messages still unread on Telegram: once a human has read a message, the bot leaves it to them. */

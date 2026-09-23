@@ -35,6 +35,8 @@ export interface AppConfig {
   supportChatId?: string;
   historyMessages: number;
   customerTimezone?: string;
+  /** request_only (default): one evidence request per deposit/withdrawal case, then silence. */
+  caseReplies?: 'request_only' | 'conversational';
   reopenWindowHours: number;
   workflow: WorkflowConfig;
   /** A customer's rapid-fire messages are handled as one turn: wait this long after the latest … */
@@ -196,16 +198,16 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     knowledge: c.knowledge,
     locks,
     patterns: c.patterns,
-    cfg: { historyMessages: cfg.historyMessages, customerTimezone: cfg.customerTimezone, reopenWindowHours: cfg.reopenWindowHours, workflow: cfg.workflow },
+    cfg: { historyMessages: cfg.historyMessages, customerTimezone: cfg.customerTimezone, caseReplies: cfg.caseReplies ?? 'request_only', reopenWindowHours: cfg.reopenWindowHours, workflow: cfg.workflow },
     log: c.log,
     metrics: c.metrics,
     clock: c.clock,
   });
   const worker = new HandoffWorker({
     store: c.store, handoff, outbox, locks, log: c.log, maxAttempts: cfg.handoffMaxAttempts, idleCloseHours: cfg.idleCloseHours, clock: c.clock,
-    exporter, composer, botSwitch,
+    exporter, composer, botSwitch, notifyCustomer: cfg.caseReplies === 'conversational',
   });
-  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log });
+  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log, notifyCustomer: cfg.caseReplies === 'conversational' });
   const manualExports = cfg.exportChatId
     ? new ManualExports({ store: c.store, outbox, transport: c.transport, exportChatId: cfg.exportChatId, locks, log: c.log, metrics: c.metrics, clock: c.clock })
     : undefined;

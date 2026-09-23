@@ -18,7 +18,7 @@ const DOC_REQUEST = /bhej dijiye|bhejo|send/i;
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ fixtures: ADMIN_FIXTURES });
+  h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
   h.vision.set('pay500', SCREENSHOTS.payment500);
 });
 
@@ -271,7 +271,7 @@ describe('silence instead of guessing', () => {
   });
 
   it('answers an unrelated question when the knowledge base covers it', async () => {
-    const hk = new Harness({ fixtures: ADMIN_FIXTURES, knowledge: [{ id: 'l', keywords: ['lineup'], answer: 'Sir, lineup match se pehle app ke contest page par dikhta hai 👍' }] });
+    const hk = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, knowledge: [{ id: 'l', keywords: ['lineup'], answer: 'Sir, lineup match se pehle app ke contest page par dikhta hai 👍' }] });
     expect(await hk.user('q3').say('sir lineup kab aayega?')).toMatch(/contest page/);
   });
 
@@ -336,7 +336,7 @@ describe('live self-test findings (second run)', () => {
       match_issue: { detected: false, category: null }, confidence: 0.9,
     });
     let next = reading('greeting', 'hinglish');
-    const hl = new Harness({ fixtures: ADMIN_FIXTURES, llm: new ScriptedLlm().on('interpret', () => next) });
+    const hl = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, llm: new ScriptedLlm().on('interpret', () => next) });
     const u = hl.user('lang-keep');
     expect(await u.say('hello ji kya haal hai')).toMatch(/Kaise help karun/);
     next = reading('thanks', 'english');

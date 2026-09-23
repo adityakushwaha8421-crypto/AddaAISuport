@@ -74,6 +74,8 @@ export type HandoffReason =
 
 export interface CaseFacts {
   sources: Partial<Record<CaseField, FactProvenance>>;
+  /** When the one evidence request went out (request-only mode: nothing else is ever said in this case). */
+  requestSentAt?: string;
   claims: {
     notReceived?: boolean;
     refusesDocuments?: boolean;

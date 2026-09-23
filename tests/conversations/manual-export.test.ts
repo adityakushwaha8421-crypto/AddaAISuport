@@ -22,7 +22,7 @@ const PDF = { kind: 'document', mimeType: 'application/pdf', fileName: 'statemen
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ adminGateway: new DisabledAdminGateway() });
+  h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
   h.vision.set('pay500', SCREENSHOTS.payment500);
 });
 

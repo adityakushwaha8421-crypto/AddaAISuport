@@ -15,7 +15,7 @@ const number = (i: number) => (i === 0 ? '9810822372' : `98${String(10000000 + i
 
 describe('concurrent customers through the queue', () => {
   it('replies once per turn, keeps customers apart, keeps each customer in order', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES, concurrency: 8 });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, concurrency: 8 });
     h.vision.set('pay500', SCREENSHOTS.payment500);
     const users = Array.from({ length: USERS }, (_, i) => h.user(`u${i}`, { firstName: `Customer ${i}` }));
 
@@ -58,7 +58,7 @@ describe('concurrent customers through the queue', () => {
   });
 
   it('a burst from one customer is one turn; messages across turns stay in order', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES, debounceMs: 1000, maxWaitMs: 3000 });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, debounceMs: 1000, maxWaitMs: 3000 });
     const u = h.user('burst');
     await u.deliver(u.build({ text: 'withdrawal ka status batao' }));
     await u.deliver(u.build({ text: 'WD-15436-64215' }));
@@ -77,7 +77,7 @@ describe('concurrent customers through the queue', () => {
 
 describe('duplicates, crashes and failures', () => {
   it('the same Telegram message delivered twice is answered once', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
     const u = h.user('dup');
     const m = u.build({ text: 'WD-15436-64215 status' });
     await u.deliver(m);
@@ -89,7 +89,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('a worker dies holding the job: another worker picks it up after the lease, one reply', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES, jobLeaseMs: 10_000 });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, jobLeaseMs: 10_000 });
     const u = h.user('crash-before');
     await u.deliver(u.build({ text: 'WD-15436-64215 status' }));
     const job = (await h.queue.claim('dead-worker', 10_000))!; // claimed, then the process is gone
@@ -101,7 +101,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('a worker dies after replying but before finishing the job: the re-run sends nothing', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES, jobLeaseMs: 10_000 });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES, jobLeaseMs: 10_000 });
     const u = h.user('crash-after');
     const m = u.build({ text: 'WD-15436-64215 status' });
     await u.deliver(m);
@@ -114,7 +114,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('a reply key is tied to the messages, so a re-run of the same turn can never send twice', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
     const u = h.user('rerun');
     const m = u.build({ text: 'WD-15436-64215 status' });
     await h.app.processor.receive(m);
@@ -125,7 +125,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('Telegram fails twice while sending: the outbox retries and the customer gets exactly one message', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
     const u = h.user('tg-fail');
     h.transport.failCustomerSends = 2;
     await u.deliver(u.build({ text: 'WD-15436-64215 status' }));
@@ -140,7 +140,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('an export whose forward fails is retried by the worker and confirmed once; nothing is forwarded twice', async () => {
-    const h = new Harness({ adminGateway: new DisabledAdminGateway() });
+    const h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
     h.vision.set('pay500', SCREENSHOTS.payment500);
     const u = h.user('export-retry');
     await u.say('deposit nahi aaya 9810822372');
@@ -162,7 +162,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('a human and the AI never race: their actions on one chat run in order', async () => {
-    const h = new Harness({ fixtures: ADMIN_FIXTURES });
+    const h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
     const u = h.user('race');
     await u.deliver(u.build({ text: 'deposit nahi aaya' }));
     await h.app.onOwnOutgoing({ chatId: u.id, messageId: 999 }); // a human typed right after
@@ -176,7 +176,7 @@ describe('duplicates, crashes and failures', () => {
   });
 
   it('the export bot confirmation delivered twice solves the case once', async () => {
-    const h = new Harness({ adminGateway: new DisabledAdminGateway() });
+    const h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
     h.vision.set('pay500', SCREENSHOTS.payment500);
     const u = h.user('8939686943');
     await u.say('deposit nahi aaya 9810822372');

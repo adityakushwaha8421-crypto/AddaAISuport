@@ -14,7 +14,7 @@ import { Harness } from '../helpers/harness.js';
 
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ fixtures: ADMIN_FIXTURES });
+  h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
   h.vision
     .set('pay500', SCREENSHOTS.payment500)
     .set('wdHistory', SCREENSHOTS.withdrawalHistory)

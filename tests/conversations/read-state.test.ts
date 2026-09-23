@@ -11,7 +11,7 @@ import { Harness } from '../helpers/harness.js';
  */
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ fixtures: ADMIN_FIXTURES });
+  h = new Harness({ caseReplies: 'conversational', fixtures: ADMIN_FIXTURES });
   h.vision.set('pay500', SCREENSHOTS.payment500);
 });
 
@@ -52,7 +52,7 @@ describe('reply only to unread messages', () => {
   });
 
   it('a read message gets no reply even when it would have been answered: a new issue during a pending case', async () => {
-    const d = new Harness({ adminGateway: new DisabledAdminGateway() });
+    const d = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway() });
     const u = d.user('pending');
     await u.say('deposit nahi aaya');
     expect(await u.readByHuman().say('withdrawal nahi aaya')).toBe('');

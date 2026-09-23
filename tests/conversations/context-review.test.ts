@@ -9,7 +9,7 @@ import { Harness } from '../helpers/harness.js';
  */
 let h: Harness;
 beforeEach(() => {
-  h = new Harness({ adminGateway: new DisabledAdminGateway(), knowledge: [{ id: 'l', keywords: ['lineup'], answer: 'Sir, lineup match se pehle app ke contest page par dikhta hai 👍' }] });
+  h = new Harness({ caseReplies: 'conversational', adminGateway: new DisabledAdminGateway(), knowledge: [{ id: 'l', keywords: ['lineup'], answer: 'Sir, lineup match se pehle app ke contest page par dikhta hai 👍' }] });
   h.vision.set('wdhist', SCREENSHOTS.withdrawalHistory);
 });
 
