@@ -28,7 +28,7 @@ export class OutboxSender {
   async deliver(entry: OutboxEntry): Promise<{ sent: boolean; messageId?: number; cancelled?: boolean }> {
     const { store, transport, log, metrics } = this.deps;
     try {
-      const res = await transport.sendText(entry.chatId, entry.text, { replyToMessageId: entry.replyToMessageId, html: entry.meta.html });
+      const res = await transport.sendText(entry.chatId, entry.text, { replyToMessageId: entry.replyToMessageId, html: entry.meta.html, kind: entry.meta.kind });
       await store.outbox.markSent(entry.id, res.messageId);
       await store.messages.insert({
         chatId: entry.chatId,

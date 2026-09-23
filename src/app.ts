@@ -217,7 +217,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     store: c.store, handoff, outbox, locks, log: c.log, maxAttempts: cfg.handoffMaxAttempts, idleCloseHours: cfg.idleCloseHours, clock: c.clock,
     exporter, composer, botSwitch, notifyCustomer: cfg.caseReplies === 'conversational',
   });
-  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log, notifyCustomer: cfg.caseReplies === 'conversational' });
+  const confirmations = new ExportConfirmations({ store: c.store, outbox, locks, log: c.log, notifyCustomer: true }); // the one customer message that is on in every mode
   const manualExports = cfg.exportChatId
     ? new ManualExports({ store: c.store, outbox, transport, exportChatId: cfg.exportChatId, locks, log: c.log, metrics: c.metrics, clock: c.clock })
     : undefined;

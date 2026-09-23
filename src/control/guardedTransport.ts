@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { Transport } from '../telegram/transport.js';
 import type { BotSwitch } from './botSwitch.js';
+import { ENABLED_CUSTOMER_MESSAGES } from './customerMessaging.js';
 
 /** Thrown by the guarded transport: the agent is switched OFF, so the send did not happen. */
 export class BotOffError extends Error {
@@ -25,6 +26,8 @@ export interface GuardOptions {
   customerMessaging: boolean;
   /** Team-facing chats (support group, export bot) that the hold does not cover. */
   internalChats?: Iterable<string | undefined>;
+  /** Message kinds let through the hold (defaults to `ENABLED_CUSTOMER_MESSAGES`). */
+  allowedKinds?: ReadonlySet<string>;
 }
 
 /**
@@ -41,8 +44,9 @@ export function guardTransport(transport: Transport, botSwitch: Pick<BotSwitch, 
     return new BotOffError(what);
   };
   // The temporary hold: a customer chat is any chat that is not one of the team's.
-  const held = (what: string, chatId: string): Error | undefined => {
-    if (opts.customerMessaging || internal.has(chatId)) return undefined;
+  const allowed = opts.allowedKinds ?? ENABLED_CUSTOMER_MESSAGES;
+  const held = (what: string, chatId: string, kind?: string): Error | undefined => {
+    if (opts.customerMessaging || internal.has(chatId) || (kind && allowed.has(kind))) return undefined;
     log.info({ chat: chatId, what }, 'customer messaging is disabled: outgoing message cancelled');
     return new MessagingHeldError(what);
   };
@@ -53,7 +57,7 @@ export function guardTransport(transport: Transport, botSwitch: Pick<BotSwitch, 
     downloadMedia: (ref) => transport.downloadMedia(ref),
     messagesExist: (chatId, ids) => transport.messagesExist(chatId, ids),
     async sendText(chatId, text, sendOpts) {
-      const hold = held('send', chatId);
+      const hold = held('send', chatId, sendOpts?.kind);
       if (hold) throw hold;
       if (!(await botSwitch.isOnNow())) throw cancelled('send', chatId);
       return transport.sendText(chatId, text, sendOpts);

@@ -183,10 +183,11 @@ describe('duplicates, crashes and failures', () => {
     await u.photo('pay500');
     await u.video();
     await u.pdf(buildPdf(HDFC_STATEMENT_WITH_CREDIT));
-    const text = '✅ PAYMENT CONFIRMED\n📱 Mobile: 9810822372';
+    const text = '✅ PAYMENT CONFIRMED\n👤 Customer: N K (User ID: 8939686943)\n📱 Mobile: 9810822372';
     await h.app.onExportMessage({ messageId: 500, text });
     await h.app.onExportMessage({ messageId: 500, text }); // redelivered
     await h.drain();
-    expect(u.replies.filter((r) => /solve ho gaya/.test(r.text))).toHaveLength(1);
+    expect(u.replies.filter((r) => /solved ho gaya/.test(r.text))).toHaveLength(1);
+    expect((await h.caseOf(u.id))?.status).toBe('resolved');
   });
 });

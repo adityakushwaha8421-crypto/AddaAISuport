@@ -377,7 +377,7 @@ describe('the export bot confirms the payment', () => {
     await other.say('deposit nahi aaya');
 
     expect(await h.botSays(confirmation('8939686943'))).toBe('solved');
-    expect(u.last).toBe('Sir, aapka deposit issue solve ho gaya hai. Inconvenience ke liye sorry. ✅');
+    expect(u.last).toBe('Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏');
     expect(other.replies).toHaveLength(1); // only their own request
     const c = (await h.casesOf(u.id))[0]!;
     expect(c).toMatchObject({ status: 'resolved', step: 'solved' });
@@ -389,7 +389,7 @@ describe('the export bot confirms the payment', () => {
     await u.say('Hi, I deposited 500 rupees but it is not showing in my wallet');
     await completeDeposit(u);
     await h.botSays(confirmation('8939686944'));
-    expect(u.last).toBe('Your deposit issue has been solved. Sorry for the inconvenience, Sir. ✅');
+    expect(u.last).toBe('Sir, your issue has been solved. Sorry for the inconvenience. 🙏');
   });
 
   it('the same confirmation twice sends nothing twice; afterwards a greeting is answered again', async () => {
@@ -405,25 +405,28 @@ describe('the export bot confirms the payment', () => {
     expect(h.exportedFiles).toHaveLength(4); // nothing was exported again
   });
 
-  it('without a User ID, the mobile number picks the customer', async () => {
+  it('without a User ID, the mobile number picks the case to close — but nobody is messaged on a guess', async () => {
     const u = h.user('8939686946');
     await u.say('deposit nahi aaya');
     await completeDeposit(u);
+    const n = u.replies.length;
     expect(await h.botSays(confirmationByMobile('9810822372'))).toBe('solved');
-    expect(u.last).toMatch(/solve ho gaya/);
+    expect(u.replies).toHaveLength(n);
     expect((await h.caseOf(u.id))?.status).toBe('resolved');
   });
 
-  it('a confirmation that replies to one of the forwards picks that customer, whatever the text says', async () => {
+  it('a confirmation that replies to one of the forwards closes that case, again without a message', async () => {
     const u = h.user('8939686950');
     await u.say('deposit nahi aaya');
     await completeDeposit(u);
+    const n = u.replies.length;
     const forwardedId = Object.values((await h.caseOf(u.id))!.facts.export!.forwarded)[0]!;
     expect(await h.botSays('✅ PAYMENT CONFIRMED\n🙏 Payment successfully confirmed.', forwardedId)).toBe('solved');
-    expect(u.last).toMatch(/solve ho gaya/);
+    expect(u.replies).toHaveLength(n);
+    expect((await h.caseOf(u.id))?.status).toBe('resolved');
   });
 
-  it('an unknown User ID, a mobile nobody pending has, two customers with the same mobile, or a different bot message: nothing is sent', async () => {
+  it('a User ID with no case is still told (exactly that id); a mobile nobody has, a shared mobile, or another bot message send nothing', async () => {
     const u = h.user('8939686947');
     const twin = h.user('8939686948');
     await u.say('deposit nahi aaya');
@@ -431,20 +434,23 @@ describe('the export bot confirms the payment', () => {
     await twin.say('deposit nahi aaya');
     await completeDeposit(twin);
     const n = h.transport.sent.length;
-    expect(await h.botSays(confirmation('1234567890'))).toBe('ignored');
+    expect(await h.botSays(confirmation('1234567890'))).toBe('solved');
+    expect(h.transport.sent.slice(n).map((s) => s.chatId)).toEqual(['1234567890']);
     expect(await h.botSays(confirmationByMobile('9999999999'))).toBe('ignored');
     expect(await h.botSays(confirmationByMobile('9810822372'))).toBe('ignored'); // both pending customers gave this number
     expect(await h.botSays('Files received 👍')).toBe('ignored');
-    expect(h.transport.sent).toHaveLength(n);
+    expect(h.transport.sent).toHaveLength(n + 1);
     expect((await h.caseOf(u.id))?.status).toBe('escalated');
   });
 
-  it('a confirmation for a customer whose case was never exported is not acted on', async () => {
+  it('a confirmation for a customer whose case was never exported still tells that customer and closes the case', async () => {
     const u = h.user('8939686951');
-    await u.say('hello');
-    const n = h.transport.sent.length;
-    expect(await h.botSays(confirmation('8939686951'))).toBe('ignored');
-    expect(h.transport.sent).toHaveLength(n);
+    await u.say('deposit nahi aaya');
+    const n = u.replies.length;
+    expect(await h.botSays(confirmation('8939686951'))).toBe('solved');
+    expect(u.replies).toHaveLength(n + 1);
+    expect(u.last).toMatch(/solved ho gaya/);
+    expect((await h.caseOf(u.id))?.status).toBe('resolved');
   });
 
   it('the confirmation reaches the customer even while a human has the chat', async () => {
@@ -453,7 +459,7 @@ describe('the export bot confirms the payment', () => {
     await completeDeposit(u);
     await h.store.users.setHumanTakeover(u.id, new Date(h.clock().getTime() + 30 * 60_000));
     expect(await h.botSays(confirmation('8939686952'))).toBe('solved');
-    expect(u.last).toMatch(/solve ho gaya/);
+    expect(u.last).toMatch(/solved ho gaya/);
   });
 });
 

@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { Logger } from 'pino';
 import { EXPORT_DONE, PENDING_STATUSES, type CaseRecord } from '../domain/cases.js';
-import { addressTerm, prefersBrief } from '../domain/memory.js';
 import type { OutboxSender } from '../pipeline/outbox.js';
-import type { ResponseComposer } from '../response/composer.js';
+import { toTelegramHtml } from '../response/format.js';
+import { renderActs } from '../response/templates.js';
 import { scrubber } from '../security/scrubber.js';
 import type { Store } from '../storage/types.js';
 import type { KeyedMutex } from '../util/mutex.js';
@@ -16,18 +17,31 @@ import type { KeyedMutex } from '../util/mutex.js';
 export interface Confirmation {
   userId?: string;
   mobile?: string;
+  /** The payment's order/transaction reference, when the bot prints one: the same payment confirmed twice is told once. */
+  orderId?: string;
 }
 
 export function parseConfirmation(text: string): Confirmation | undefined {
   if (!/PAYMENT\s+CONFIRMED/i.test(text)) return undefined;
   const userId = /User\s*ID\s*[:=]?\s*(\d{5,20})\b/i.exec(text)?.[1];
   const mobile = /(?:Mobile|Phone|Number|Registered\s*(?:no|number))\s*[:=]?\s*(?:\+?91[\s-]?)?(\d{10})\b/i.exec(text)?.[1];
-  return { userId, mobile };
+  const orderId = /(?:Order|Txn|Transaction|UTR|Ref(?:erence)?)\s*(?:ID|No\.?|Number)?\s*[:=]?\s*([A-Z0-9][A-Z0-9-]{5,})\b/i.exec(text)?.[1];
+  return { userId, mobile, orderId };
+}
+
+/** The confirmation's content, ignoring spacing and case: the same confirmation re-sent has the same print. */
+function fingerprint(text: string): string {
+  return createHash('sha1').update(text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')).digest('hex').slice(0, 16);
+}
+
+/** The agreed wording, in the customer's language; never paraphrased by a model. */
+export function solvedMessage(lang: 'hinglish' | 'english' | 'hindi'): string {
+  return renderActs([{ type: 'deposit_solved' }], lang);
 }
 
 export class ExportConfirmations {
   constructor(
-    private readonly o: { store: Store; outbox: OutboxSender; composer: ResponseComposer; locks: KeyedMutex; log: Logger; notifyCustomer?: boolean },
+    private readonly o: { store: Store; outbox: OutboxSender; locks: KeyedMutex; log: Logger; notifyCustomer?: boolean },
   ) {}
 
   async onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<'solved' | 'duplicate' | 'ignored'> {
@@ -39,41 +53,51 @@ export class ExportConfirmations {
       return 'ignored';
     }
     const target = await this.findCase(parsed, msg.replyToMessageId);
-    if (!target) {
-      log.warn({ messageId: msg.messageId, userId: parsed.userId, replyTo: msg.replyToMessageId, text: scrubber.scrub(text).slice(0, 400) }, 'PAYMENT CONFIRMED could not be matched to one pending deposit case; nothing sent');
+    // The customer is told only when the confirmation names their Telegram User ID, and only that
+    // customer — never one guessed from a mobile number or a reply. A private chat's id is the user's id.
+    const tellUserId = parsed.userId;
+    if (!target && !tellUserId) {
+      log.warn({ messageId: msg.messageId, replyTo: msg.replyToMessageId, text: scrubber.scrub(text).slice(0, 400) }, 'PAYMENT CONFIRMED carries no User ID and matches no pending deposit case; nothing sent');
       return 'ignored';
     }
-    const user = await store.users.get(target.userId);
-    if (!user) return 'ignored';
-    return this.o.locks.run(user.chatId, async () => {
-      const c = await store.cases.get(target.id);
-      if (!c || !PENDING_STATUSES.includes(c.status)) {
-        log.info({ case: target.id }, 'payment confirmed again for a case already solved: nothing sent');
+    const chatId = target ? (await store.users.get(target.userId))?.chatId ?? target.chatId : tellUserId!;
+    return this.o.locks.run(chatId, async () => {
+      const c = target ? await store.cases.get(target.id) : undefined;
+      const user = await store.users.get(target?.userId ?? tellUserId!);
+      if (c && !PENDING_STATUSES.includes(c.status)) {
+        log.info({ case: c.id }, 'payment confirmed again for a case already solved: nothing sent');
         return 'duplicate';
       }
-      const lang = user.preferredLanguage ?? 'hinglish';
-      if (this.o.notifyCustomer) {
-        const composed = await this.o.composer.compose({
-          acts: [{ type: 'deposit_solved' }], language: lang, userText: '', history: [], address: addressTerm(user.memory), brief: prefersBrief(user.memory),
-        });
+      const lang = user?.preferredLanguage ?? 'hinglish';
+      let told = false;
+      if (this.o.notifyCustomer && tellUserId) {
+        // Once per payment: the same order confirmed twice is one message; without an order line, the
+        // same confirmation text re-sent is one message (a different amount or date is a different payment).
+        const key = `payment_confirmed:${tellUserId}:${parsed.orderId ? `order:${parsed.orderId.toUpperCase()}` : `text:${fingerprint(text)}`}`;
         const sent = await this.o.outbox.send({
-          key: `solved:${c.id}`, chatId: user.chatId, userId: user.id, text: composed.text,
-          meta: { kind: 'reply', html: true, caseId: c.id, caseType: 'deposit', acts: ['deposit_solved'] },
+          key, chatId: user?.chatId ?? tellUserId, userId: tellUserId, text: toTelegramHtml(solvedMessage(lang)),
+          meta: { kind: 'payment_confirmed', html: true, caseId: c?.id, caseType: c?.type ?? 'deposit', acts: ['deposit_solved'] },
         });
-        if (!sent.sent) {
-          log.warn({ case: c.id }, 'resolution message could not be sent; case left pending for retry');
+        if (sent.duplicate) {
+          log.info({ userId: tellUserId, key }, 'payment confirmed again for the same payment: customer already told, nothing sent');
+          if (!c) return 'duplicate';
+        } else if (!sent.sent && !sent.cancelled) {
+          log.warn({ userId: tellUserId, case: c?.id }, 'resolution message could not be sent; case left pending for retry');
           return 'ignored';
         }
+        told = sent.sent;
       }
-      c.status = 'resolved';
-      c.step = 'solved';
-      c.facts.resolution = 'Payment confirmed by the team (export bot)';
-      c.facts.lastAsked = [];
-      c.missing = [];
-      await store.cases.save(c);
-      const ticket = await store.tickets.findOpenByCase(c.id);
-      if (ticket) await store.tickets.update(ticket.id, { status: 'closed' });
-      log.info({ case: c.id, userId: user.id, language: lang, matchedBy: parsed.userId ? 'user_id' : msg.replyToMessageId ? 'reply' : 'mobile', customerTold: !!this.o.notifyCustomer }, 'deposit solved');
+      if (c) {
+        c.status = 'resolved';
+        c.step = 'solved';
+        c.facts.resolution = 'Payment confirmed by the team (export bot)';
+        c.facts.lastAsked = [];
+        c.missing = [];
+        await store.cases.save(c);
+        const ticket = await store.tickets.findOpenByCase(c.id);
+        if (ticket) await store.tickets.update(ticket.id, { status: 'closed' });
+      }
+      log.info({ case: c?.id, userId: tellUserId ?? target?.userId, language: lang, matchedBy: parsed.userId ? 'user_id' : msg.replyToMessageId ? 'reply' : 'mobile', customerTold: told }, c ? 'deposit solved' : 'payment confirmed for a customer with no open case: customer told');
       return 'solved';
     });
   }

@@ -113,7 +113,7 @@ describe('admin commands', () => {
     expect((await h.casesOf(u.id))[0]?.status).not.toBe('resolved');
     await h.user(ADMIN).say('/boton');
     await h.drain();
-    expect(u.last).toMatch(/solve ho gaya/);
+    expect(u.last).toMatch(/solved ho gaya/);
     expect((await h.casesOf(u.id))[0]?.status).toBe('resolved');
   });
 });

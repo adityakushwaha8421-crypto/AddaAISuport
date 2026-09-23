@@ -195,10 +195,11 @@ function renderAct(a: Act, lang: L): string {
       // Agreed wording, sent as is in every language.
       return 'Your details and documents have been shared with our team successfully. They will review your issue and work on resolving it as soon as possible. ✅';
     case 'deposit_solved':
+      // Agreed wording (sent after the export bot's PAYMENT CONFIRMED), in the customer's language.
       return pick(lang,
-        'Sir, aapka deposit issue solve ho gaya hai. Inconvenience ke liye sorry. ✅',
-        'Your deposit issue has been solved. Sorry for the inconvenience, Sir. ✅',
-        'सर, आपका डिपॉज़िट इश्यू सॉल्व हो गया है। असुविधा के लिए माफ़ी। ✅');
+        'Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏',
+        'Sir, your issue has been solved. Sorry for the inconvenience. 🙏',
+        'सर, आपका इश्यू सॉल्व हो गया है। असुविधा के लिए माफ़ी। 🙏');
     case 'clarify_issue_type':
       return pick(lang,
         'Samajh gaya sir 👍 Deposit ka issue hai ya withdrawal ka?\n\n💰 Deposit: paisa wallet me add nahi hua\n🏦 Withdrawal: paisa bank account me nahi aaya',

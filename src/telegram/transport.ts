@@ -4,6 +4,8 @@ export interface SendOptions {
   replyToMessageId?: number;
   /** Text carries Telegram HTML markup (produced only by response/format.ts). */
   html?: boolean;
+  /** What this message is (the outbox `kind`); the customer-messaging hold lets allowed kinds through. */
+  kind?: string;
 }
 
 /** A message posted in the support group (used to relay human replies back to customers). */

@@ -100,6 +100,17 @@ tickets, folders, `/boton` `/botoff` `/restart` replies to the admin). The reply
 unchanged and is re-enabled by flipping that constant (or gating individual acts in
 `src/pipeline/processor.ts` to bring it back piece by piece).
 
+**Active right now (and only this):**
+
+1. **Folder management** — a match-related message moves the chat to **Match issues**, any other
+   support issue to **Support**; a later, different issue moves it again. No customer reply.
+2. **Export bot payment confirmation** — when the export bot sends `✅ PAYMENT CONFIRMED` with a
+   `User ID: <id>` line, exactly that customer is told, in their language:
+   *"Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏"* — once per payment
+   (same order or same confirmation re-sent → nothing more). A confirmation without a User ID
+   messages nobody (it can still close the matching case by mobile/reply, silently). This is the
+   one kind on the `ENABLED_CUSTOMER_MESSAGES` allowlist in `src/control/customerMessaging.ts`.
+
 ## How it behaves
 
 | Situation | Behaviour |

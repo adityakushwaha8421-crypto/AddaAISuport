@@ -41,7 +41,7 @@ export interface UserRepo {
 
 /** Metadata kept on messages so that later swipe-replies can be resolved. */
 export interface MessageMeta {
-  kind?: 'reply' | 'followup' | 'relay' | 'human';
+  kind?: 'reply' | 'followup' | 'relay' | 'human' | 'payment_confirmed';
   caseId?: string;
   caseType?: CaseType;
   acts?: string[];

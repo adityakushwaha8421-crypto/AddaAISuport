@@ -95,9 +95,9 @@ describe('parseConfirmation', () => {
   ].join('\n');
 
   it('reads the User ID and the mobile from a confirmation', () => {
-    expect(parseConfirmation(sample)).toEqual({ userId: '8939686943', mobile: '9117231129' });
-    expect(parseConfirmation('payment confirmed\nuser id: 12345678')).toEqual({ userId: '12345678', mobile: undefined });
-    expect(parseConfirmation('✅ PAYMENT CONFIRMED\n📱 Mobile: +91 9117231129\n💰 Amount: ₹3,499.67')).toEqual({ userId: undefined, mobile: '9117231129' });
+    expect(parseConfirmation(sample)).toEqual({ userId: '8939686943', mobile: '9117231129', orderId: 'ILLUN-178923603882201' });
+    expect(parseConfirmation('payment confirmed\nuser id: 12345678')).toEqual({ userId: '12345678', mobile: undefined, orderId: undefined });
+    expect(parseConfirmation('✅ PAYMENT CONFIRMED\n📱 Mobile: +91 9117231129\n💰 Amount: ₹3,499.67')).toEqual({ userId: undefined, mobile: '9117231129', orderId: undefined });
   });
 
   it('ignores anything that is not a PAYMENT CONFIRMED', () => {

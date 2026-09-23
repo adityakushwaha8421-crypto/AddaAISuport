@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe('deposit: one request, then silence', () => {
-  it('every follow-up is silent, the items are still collected and exported, and no confirmation is sent', async () => {
+  it('every follow-up is silent, the items are still collected and exported; only the payment confirmation is told', async () => {
     const u = h.user('d1');
     expect(await u.say('paise add nahi hue')).toMatch(DEPOSIT_REQUEST);
     for (const t of ['hi', 'hello', 'okay', 'please check', 'karwaiye', 'kya bhejna hai?', 'kitni baar bolu', 'sir jaldi karo']) expect(await u.say(t), t).toBe('');
@@ -59,11 +59,11 @@ describe('deposit: one request, then silence', () => {
     await u.pdf(buildPdf(HDFC_STATEMENT_WITH_CREDIT));
     await u.video();
     expect(h.exportedFiles).toHaveLength(4);
-    const sent = h.transport.sent.length;
+    // The export bot's PAYMENT CONFIRMED is the one exception: that customer is told, once, in the agreed words.
     expect(await h.botSays('✅ PAYMENT CONFIRMED\n\n👤 Customer: N K (User ID: 8939686943)\n📱 Mobile: 9810822372')).toBe('solved');
-    expect(h.transport.sent).toHaveLength(sent);
     expect((await h.casesOf(u.id))[0]?.status).toBe('resolved');
-    expect(u.replies).toHaveLength(1);
+    expect(u.replies).toHaveLength(2);
+    expect(u.last).toBe('Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏');
   });
 
   it('a second, different issue after the first is with the team gets its own single request', async () => {
