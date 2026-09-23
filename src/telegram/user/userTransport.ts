@@ -469,6 +469,12 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
     return msgs.filter((m): m is Api.Message => m instanceof Api.Message).map((m) => m.id);
   }
 
+  async recentOutgoing(chatId: string, limit: number): Promise<number[]> {
+    const client = this.requireClient();
+    const msgs = await this.withEntityRetry(() => client.getMessages(this.peer(chatId), { limit }));
+    return msgs.filter((m): m is Api.Message => m instanceof Api.Message && !!m.out).map((m) => m.id);
+  }
+
   async downloadMedia(ref: MediaRef): Promise<Buffer> {
     if (ref.fileSize && ref.fileSize > MAX_DOWNLOAD) throw new MediaTooLargeError('File too large');
     const [chatId, msgId] = ref.fileRef.split(':');

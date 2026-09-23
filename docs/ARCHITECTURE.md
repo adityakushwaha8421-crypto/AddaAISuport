@@ -252,7 +252,12 @@ so every worker sees it and it survives restarts. OFF pauses everything automati
 stops claiming (a job caught mid-flight is released back untouched via `DeferJobError`, its attempt
 not counted) and the maintenance worker skips its ticks, so replies, requests, greetings, folder
 filing, exports, confirmations and retries all wait; messages are still received, stored and
-queued. ON lets the backlog run.
+queued. ON does **not** answer them: a message that arrived while OFF is stored, marked handled and
+ignored at the first line of the inbound handler (never queued); a turn queued just before /botoff
+finds, when it runs, that its message predates `bot.enabledAt` and ignores it. The state is
+mirrored to `BOT_STATE_FILE` (`data/bot-state.json`): with the in-memory store the settings table
+dies with the process, and `BotSwitch.restore()` seeds an empty store from the in-process
+carry-over (/restart) or the file (full restart); a store that holds a value (Postgres) wins.
 
 The switch is checked at every stage, each time fresh from the store (`BotSwitch.isOnNow`), never
 from a process-local cache alone: before a job is claimed, at the start of a turn (before the
@@ -272,6 +277,18 @@ agent is stopped cleanly (jobs drained, Telegram disconnected, store closed), `.
 a fresh agent is booted in the same process under the same instance lock with the ON/OFF state
 carried over, and only then the admin is told "✅ Bot restarted successfully." Boot failures are
 retried with backoff.
+
+### 3.10d Only new, eligible conversations
+The bot never speaks first. A turn is ignored outright (stored, marked handled, no folder, no AI)
+when the switch is OFF, when its message predates the last switch-on, or when the message is older
+than `STALE_MESSAGE_SECONDS` on arrival or when the turn runs (restart, reconnect catch-up); startup
+recovery of unprocessed messages is off by default. On a customer's first message the processor
+asks the transport for the account's recent outgoing messages in that chat (`recentOutgoing`,
+GramJS `getMessages` filtered by `out`) and compares them with the outbox's records: any the bot
+did not send is a human's, so the chat is marked taken over (until the resume command) and the bot
+stays out; an unreadable history means silence for that turn and a re-check next time. The result
+is remembered in `UserMemory.conversationChecked`. Right before sending, the turn re-reads the
+switch, the hold, the human-read state and the takeover flag once more; any of them drops the reply.
 
 ### 3.11 Degraded mode
 If OpenAI is unavailable the lexical interpreter and templates keep the bot functional (with lower

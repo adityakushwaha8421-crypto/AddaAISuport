@@ -48,6 +48,9 @@ export class FakeTransport implements Transport, ReadStateApi {
   failExportVerify = 0;
   /** Highest incoming message id a human has read, per chat (Telegram's read_inbox_max_id). */
   readonly readUpTo = new Map<string, number>();
+  /** Messages a human sent from the account in a chat before the bot ever saw it (an existing conversation). */
+  readonly humanHistory = new Map<string, number[]>();
+  failHistoryChecks = 0;
   failReadChecks = 0;
 
   nextId(chatId: string): number {
@@ -109,6 +112,20 @@ export class FakeTransport implements Transport, ReadStateApi {
     return f;
   }
   async sendTyping() {}
+  /** A human already wrote in this chat from the account (before the bot ran): the next id in the chat. */
+  humanWroteEarlier(chatId: string): number {
+    const id = this.nextId(chatId);
+    this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), id]);
+    return id;
+  }
+  async recentOutgoing(chatId: string, limit: number) {
+    if (this.failHistoryChecks > 0) {
+      this.failHistoryChecks--;
+      throw new Error('FLOOD_WAIT_5');
+    }
+    const own = this.sent.filter((s) => s.chatId === chatId).map((s) => s.messageId);
+    return [...own, ...(this.humanHistory.get(chatId) ?? [])].sort((a, b) => b - a).slice(0, limit);
+  }
   async seenByHuman(chatId: string, messageId: number) {
     if (this.failReadChecks > 0) {
       this.failReadChecks--;
@@ -185,6 +202,10 @@ export interface HarnessOptions {
   caseReplies?: 'request_only' | 'conversational';
   /** Tests exercise the reply logic, so the code-level hold (control/customerMessaging.ts) is lifted unless a test sets `false`. */
   customerMessaging?: boolean;
+  /** Messages older than this on arrival are ignored (default in tests: no limit). */
+  staleSeconds?: number;
+  /** Mirror file for the ON/OFF switch (default in tests: none). */
+  botStateFile?: string;
   onRestart?: (reply: { chatId: string }) => void;
 }
 
@@ -354,6 +375,8 @@ export class Harness {
         adminIds: opts.adminIds,
         caseReplies: opts.caseReplies ?? 'request_only',
         customerMessaging: opts.customerMessaging ?? true,
+        staleSeconds: opts.staleSeconds ?? 0,
+        botStateFile: opts.botStateFile,
         onRestart: opts.onRestart,
         responseMode: opts.responseMode ?? 'template',
         takeoverMinutes: 0, // like production: a human's chat stays theirs until they hand it back

@@ -84,8 +84,8 @@ message and do nothing.
 
 | Command | Effect | Reply |
 |---|---|---|
-| `/botoff` | Agent OFF, saved permanently (store `settings`, shared by every process). **Everything automatic stops**: replies, evidence requests, greetings, folder filing, exports, confirmations, background retries. The state is checked before a message is read, before the AI is called and again right before every send or forward, so a reply that was being prepared when the command arrived is cancelled; unsent replies from before are withdrawn and never sent later. Messages are still received and stored, and the work waits in the queue. | `⛔ Bot is OFF` |
-| `/boton` | Agent ON again, saved permanently; the work that arrived while OFF is picked up. | `✅ Bot is ON` |
+| `/botoff` | `bot_enabled = false`, saved in the store (shared by every process) **and** mirrored to `BOT_STATE_FILE` (`data/bot-state.json`), so OFF survives a full restart even with `STORE=memory`, a `/restart`, and any Telegram/OpenAI reconnect. **Everything automatic stops.** The state is checked at the first line of the inbound handler (a message arriving while OFF is kept in the transcript and otherwise ignored: no queue, no AI, no folder, no reply), before a job is claimed, at the start of a turn, before the reply is composed, and again inside the transport right before every send. A reply being prepared when the command lands is cancelled; unsent replies from before are withdrawn and never sent later. | `⛔ Bot is OFF` |
+| `/boton` | `bot_enabled = true`, saved the same way. **Nothing from before is answered**: messages that arrived while OFF, or were queued just before `/botoff`, are never replied to. Only new messages after the switch-on are. | `✅ Bot is ON` |
 | `/restart` | Safe in-process restart: in-flight jobs finish, Telegram disconnects and reconnects, `.env` and every config file are reloaded, the ON/OFF state is preserved. | `✅ Bot restarted successfully.` (only after the new instance is up) |
 
 ## ⚠️ Customer messaging is currently on hold
@@ -110,6 +110,24 @@ unchanged and is re-enabled by flipping that constant (or gating individual acts
    (same order or same confirmation re-sent → nothing more). A confirmation without a User ID
    messages nobody (it can still close the matching case by mobile/reply, silently). This is the
    one kind on the `ENABLED_CUSTOMER_MESSAGES` allowlist in `src/control/customerMessaging.ts`.
+
+## Only new, eligible conversations are answered
+
+The bot never messages a customer on its own. It replies only to a **new incoming message** in a
+conversation that is the bot's to handle, and it verifies that before every outgoing message:
+
+| Check | How |
+|---|---|
+| Is AI control active? | `bot_enabled` read fresh from the store, plus the code-level hold, checked again inside the transport right before the send |
+| Is this a fresh conversation? | On the first message from a customer, the chat's Telegram history is read once: a message from this account that the bot did not send means a human is already talking to them — the chat is theirs (no reply, no request, no case) until they type the resume command. If the history cannot be read, the bot stays silent and checks again next time |
+| Has a human taken control? | A human's message in the chat, or a human having read the message, silences the bot; re-checked right before sending |
+| Has it already been handled? | A deposit/withdrawal case that has had its one evidence request gets nothing more |
+| Is it under manual review? | A match issue keeps the chat in **Match issues** and the bot silent until a human answers |
+| Is the message old? | A message older than `STALE_MESSAGE_SECONDS` (default 300) when the bot gets to it — a restart, a reconnect catch-up — is ignored; so is any message from before the last `/boton`. Startup recovery of old messages is off (`RECOVER_UNPROCESSED_MINUTES=0`) |
+
+No reminders, no unsolicited follow-ups, no restarting an old conversation, nothing sent because
+the bot restarted or was switched on. The one team-triggered exception is the export bot's
+`PAYMENT CONFIRMED` message (see above), which was enabled explicitly.
 
 ## How it behaves
 

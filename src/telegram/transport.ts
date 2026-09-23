@@ -64,6 +64,11 @@ export interface Transport {
   sendTyping(chatId: string): Promise<void>;
   /** Delete one of our own messages for both sides (a human's "/ai" command, not meant for the customer). */
   deleteMessage?(chatId: string, messageId: number): Promise<void>;
+  /**
+   * Ids of the messages this account sent in the chat, among its most recent `limit` messages. Used
+   * once per customer to tell a fresh conversation from one a human is already having with them.
+   */
+  recentOutgoing?(chatId: string, limit: number): Promise<number[]>;
   healthy(): boolean;
 }
 

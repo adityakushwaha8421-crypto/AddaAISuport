@@ -27,6 +27,8 @@ const envSchema = z.object({
   TELEGRAM_SESSION_FILE: z.string().trim().min(1).default('secrets/telegram.session.enc'),
   /** PID lock so only one copy of the agent runs on this account. */
   INSTANCE_LOCK_FILE: z.string().trim().min(1).default('secrets/agent.lock'),
+  /** Mirror of the ON/OFF switch so OFF survives a full restart even with STORE=memory. */
+  BOT_STATE_FILE: z.string().trim().min(1).default('data/bot-state.json'),
   /** Optional existing string session (GramJS/Telethon). Imported into the encrypted session file on first start. */
   /** The account's session string (from `npm run telegram:session`). When set, it is used as is and no session file or encryption key is needed. */
   TELEGRAM_SESSION: optionalString,
@@ -50,6 +52,10 @@ const envSchema = z.object({
    * it from there. conversational: the full dialogue (acks, follow-ups, export/solved confirmations).
    */
   CASE_REPLIES: z.enum(['request_only', 'conversational']).default('request_only'),
+  /** A customer message older than this when the bot gets to it (a restart, a reconnect catch-up) is never answered. */
+  STALE_MESSAGE_SECONDS: int(300),
+  /** Re-queue messages left unprocessed by a previous run, up to this many minutes old. 0 (default): never — old messages are not answered after a restart. */
+  RECOVER_UNPROCESSED_MINUTES: int(0),
   /** Customers' timezone (IANA name): a greeting goes out only on a customer's first message of their calendar day. */
   CUSTOMER_TIMEZONE: z.string().trim().min(1).default('Asia/Kolkata'),
   /** Reply only to messages still unread on Telegram: once a human has read a message, the bot leaves it to them. */
@@ -157,7 +163,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, require: EnvReq
     if (require.includes('telegram') && env.ROLE !== 'worker') {
       if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) problems.push('TELEGRAM_API_ID and TELEGRAM_API_HASH are required (https://my.telegram.org)');
       // A path setting that holds a secret would end up as directory names on disk: refuse it outright.
-      for (const key of ['TELEGRAM_SESSION_FILE', 'INSTANCE_LOCK_FILE'] as const) {
+      for (const key of ['TELEGRAM_SESSION_FILE', 'INSTANCE_LOCK_FILE', 'BOT_STATE_FILE'] as const) {
         const v = env[key];
         if (looksLikeSessionString(v) || v.length > 200 || /\s/.test(v)) problems.push(`${key} must be a file path such as secrets/telegram.session.enc (the session string belongs in TELEGRAM_SESSION)`);
       }

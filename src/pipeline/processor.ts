@@ -1,4 +1,3 @@
-import { DeferJobError } from '../queue/runner.js';
 import type { Logger } from 'pino';
 import type { CaseService } from '../cases/service.js';
 import { routeTurn } from '../cases/router.js';
@@ -29,6 +28,9 @@ import type { KeyedMutex } from '../util/mutex.js';
 import type { Workflow, WorkflowConfig, WorkflowOutput } from '../workflows/types.js';
 import type { OutboxSender } from './outbox.js';
 
+/** A human's chat stays theirs until they hand it back with the resume command. */
+const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
+
 export interface ProcessorConfig {
   historyMessages: number;
   /** Customers' IANA timezone; a greeting goes out only on a customer's first message of their day. */
@@ -37,13 +39,15 @@ export interface ProcessorConfig {
   caseReplies?: 'request_only' | 'conversational';
   /** `false`: the temporary hold — replies are prepared for the trace but never composed or sent. */
   customerMessaging?: boolean;
+  /** A message older than this when the bot gets to it is never answered (a restart, a reconnect catch-up). 0: no limit. */
+  staleSeconds?: number;
   reopenWindowHours: number;
   workflow: WorkflowConfig;
 }
 
 export interface ProcessorDeps {
   store: Store;
-  transport: Pick<Transport, 'downloadMedia' | 'sendTyping'>;
+  transport: Pick<Transport, 'downloadMedia' | 'sendTyping' | 'recentOutgoing'>;
   evidence: EvidenceService;
   interpreter: Interpreter;
   cases: CaseService;
@@ -64,7 +68,7 @@ export interface ProcessorDeps {
   exporter?: EvidenceExporter;
   /** The agent's ON/OFF switch (/boton, /botoff): OFF means no reply, no request, nothing. */
   /** The ON/OFF switch; `isOnNow` reads the shared store fresh (the last check before a reply). */
-  botSwitch?: { isOn(): Promise<boolean>; isOnNow(): Promise<boolean> };
+  botSwitch?: { isOn(): Promise<boolean>; isOnNow(): Promise<boolean>; enabledAt?(): Promise<Date | undefined> };
   log: Logger;
   metrics?: Metrics;
   clock?: () => Date;
@@ -175,21 +179,42 @@ export class TurnProcessor {
     let filed = false; // the chat folders already reflect this turn
     let requestedNow = false; // this turn is a case's one evidence request (request-only mode)
 
-    // Switched OFF by an admin: nothing is done now — not read, not interpreted, not answered; the
-    // turn waits in the queue for /boton. Read fresh from the store: every process sees the same state.
-    if (this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow())) {
-      await store.turns.update(turn.id, { status: 'skipped', trace: scrubber.scrubDeep({ ...trace, reason: 'bot_off_deferred' }), completedAt: new Date() });
-      tlog.info('bot is OFF: turn deferred until it is switched on');
-      throw new DeferJobError('bot is off');
-    }
+    // Nothing is done for this message — not read, not interpreted, not filed, not answered — when:
+    //  - the agent is switched OFF (bot_enabled = false, read fresh from the shared store);
+    //  - it arrived before the agent was last switched ON (it was waiting while OFF, or was queued
+    //    just before /botoff): the switch-on is never a reason to answer old messages;
+    //  - it is stale: older than the cut-off when the bot gets to it (a restart, a reconnect catch-up).
+    // The message stays in the transcript, marked handled, so nothing ever comes back to it.
+    const skipAll = async (reason: string) => {
+      await store.messages.markProcessed(chatId, raw.map((m) => m.messageId), { turnId: turn.id });
+      await store.turns.update(turn.id, { status: 'skipped', trace: scrubber.scrubDeep({ ...trace, reason }), completedAt: new Date() });
+      metrics?.turns.inc({ outcome: reason });
+      tlog.info({ reason }, 'turn ignored');
+      return { turnId: turn.id, replied: false, acts: [] } as TurnOutcome;
+    };
+    if (this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow())) return skipAll('bot_off');
+    const newest = Math.max(...raw.map((m) => m.date.getTime()));
+    const enabledAt = await this.deps.botSwitch?.enabledAt?.();
+    if (enabledAt && newest < enabledAt.getTime()) return skipAll('before_bot_on');
+    const stale = this.deps.cfg.staleSeconds ?? 0;
+    if (stale > 0 && now.getTime() - newest > stale * 1000) return skipAll('stale_message');
 
     try {
       // While a human handles the chat the bot never replies, but every message is still read: the
       // latest message decides the chat's folder, however recently it moved. The same holds for a
       // message a human already read on Telegram — whatever it says, it is theirs to answer.
+      const memoryBefore = JSON.stringify(user.memory);
+      // A customer the bot meets for the first time: is this a fresh conversation, or one a human on
+      // this account is already having with them? The chat's history decides, once. A human's message
+      // there that the bot did not send makes the chat theirs — the bot stays out until handed back.
+      const fresh = await this.freshConversation(user, chatId, now, tlog);
+      if (fresh === 'unknown') {
+        // In doubt, silence: nothing is sent; the check runs again on the next message.
+        if (JSON.stringify(user.memory) !== memoryBefore) await store.users.saveMemory(user.id, user.memory);
+        return skipAll('conversation_unverified');
+      }
       const takenOver = !!(user.humanTakeoverUntil && user.humanTakeoverUntil > now);
       let seen = await this.seenByHuman(chatId, latestId, tlog);
-      const memoryBefore = JSON.stringify(user.memory);
 
       const { cases, focused } = await this.deps.cases.load(user);
       // No "typing…" either in a case that has had its one request: the bot is out of that conversation.
@@ -339,8 +364,14 @@ export class TurnProcessor {
       // The temporary hold on customer messaging (control/customerMessaging.ts) drops the reply the same way.
       const held = out.acts.length > 0 && !readMeanwhile && this.deps.cfg.customerMessaging === false;
       let switchedOff = held || (out.acts.length > 0 && !readMeanwhile && !!this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow()));
+      // …and a human who took the chat while this turn ran (their message is queued behind it): theirs now.
+      const humanNow = out.acts.length > 0 && !readMeanwhile && !switchedOff && (await this.humanHasChat(user.id, now));
+      if (humanNow) {
+        trace.reason = 'human_takeover';
+        tlog.info({ intent: interp.intent }, 'reply dropped: a human took the chat while the reply was being prepared');
+      }
       let text: string | undefined;
-      if (out.acts.length && !readMeanwhile && !switchedOff) {
+      if (out.acts.length && !readMeanwhile && !switchedOff && !humanNow) {
         const composed = await this.deps.composer.compose({
           acts: out.acts, language: lang, userText: signals.text, history: toHistory(history),
           address: addressTerm(user.memory), brief: prefersBrief(user.memory),
@@ -389,8 +420,8 @@ export class TurnProcessor {
 
       if (JSON.stringify(user.memory) !== memoryBefore) await store.users.saveMemory(user.id, user.memory);
       await store.messages.markProcessed(chatId, raw.map((m) => m.messageId), { turnId: turn.id, caseId: c?.id });
-      const outcome = text ? 'responded' : readMeanwhile ? 'seen_by_human' : switchedOff ? 'bot_off' : 'no_reply';
-      await store.turns.update(turn.id, { status: readMeanwhile || switchedOff ? 'skipped' : text ? 'responded' : 'no_reply', caseId: c?.id, trace: scrubber.scrubDeep(trace), completedAt: new Date() });
+      const outcome = text ? 'responded' : readMeanwhile ? 'seen_by_human' : switchedOff ? 'bot_off' : humanNow ? 'human_takeover' : 'no_reply';
+      await store.turns.update(turn.id, { status: readMeanwhile || switchedOff || humanNow ? 'skipped' : text ? 'responded' : 'no_reply', caseId: c?.id, trace: scrubber.scrubDeep(trace), completedAt: new Date() });
       metrics?.turns.inc({ outcome, intent: interp.intent, interpreter: interp.source });
       // Operational breadcrumb (no message content).
       tlog.info(
@@ -414,6 +445,41 @@ export class TurnProcessor {
   /** A deposit/withdrawal case that has had its one evidence request, in request-only mode. */
   private silentCase(c: CaseRecord): boolean {
     return this.deps.cfg.caseReplies !== 'conversational' && (c.type === 'deposit' || c.type === 'withdrawal') && !!c.facts.requestSentAt;
+  }
+
+  /**
+   * Once per customer: does the chat already hold a message from this account that the bot did
+   * not send — a human's? Then the conversation is theirs (takeover, until handed back with the
+   * resume command). 'fresh' when it holds none; 'unknown' when Telegram could not be asked.
+   */
+  private async freshConversation(user: UserRecord, chatId: string, now: Date, tlog: Logger): Promise<'fresh' | 'human' | 'unknown'> {
+    if (user.memory.conversationChecked) return 'fresh';
+    if (!this.deps.transport.recentOutgoing) {
+      user.memory = { ...user.memory, conversationChecked: now.toISOString() };
+      return 'fresh';
+    }
+    let outgoing: number[];
+    try {
+      outgoing = await this.deps.transport.recentOutgoing(chatId, 30);
+    } catch (err) {
+      tlog.warn({ err }, 'could not read the chat history to tell a fresh conversation from an existing one; staying silent');
+      return 'unknown';
+    }
+    user.memory = { ...user.memory, conversationChecked: now.toISOString() };
+    if (!outgoing.length) return 'fresh';
+    const ours = new Set((await this.deps.store.messages.recent(chatId, 200)).filter((m) => m.direction === 'out').map((m) => m.telegramMessageId));
+    const human = outgoing.filter((id) => !ours.has(id));
+    if (!human.length) return 'fresh';
+    await this.deps.store.users.setHumanTakeover(user.id, FAR_FUTURE);
+    user.humanTakeoverUntil = FAR_FUTURE;
+    tlog.info({ humanMessages: human.length }, 'existing conversation: a human already wrote in this chat; the bot stays out until handed back');
+    return 'human';
+  }
+
+  /** Re-read right before sending: did a human take this chat while the turn ran? */
+  private async humanHasChat(userId: string, now: Date): Promise<boolean> {
+    const u = await this.deps.store.users.get(userId);
+    return !!(u?.humanTakeoverUntil && u.humanTakeoverUntil > now);
   }
 
   /** Unknown read state counts as unread: a fresh message is unread unless Telegram says otherwise. */

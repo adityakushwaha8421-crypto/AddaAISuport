@@ -69,30 +69,35 @@ describe('admin commands', () => {
     expect(own.transport.sent).toHaveLength(1);
   });
 
-  it('work that arrives while OFF waits in the queue and runs once the agent is ON again', async () => {
+  it('a message that arrives while OFF is kept in the transcript and never answered — not even after /boton', async () => {
     const admin = h.user(ADMIN);
     const c = h.user('c6');
     await admin.say('/botoff');
     await c.deliver(c.build({ text: 'deposit nahi aaya' }));
-    expect(await h.drain()).toBe(0); // gated: nothing claimed
+    expect(h.queue.all().filter((j) => j.type === 'turn')).toHaveLength(0); // never queued
+    expect(await h.drain()).toBe(0);
     expect(c.replies).toHaveLength(0);
     expect(await h.casesOf(c.id)).toHaveLength(0);
+    const stored = await h.store.messages.recent(c.id, 5);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.processedAt).toBeDefined(); // in the transcript, marked handled
     await admin.say('/boton');
-    expect(await h.drain()).toBeGreaterThan(0);
-    expect(c.last).toMatch(/deposit check karne ke liye/);
+    expect(await h.drain()).toBe(0);
+    expect(c.replies).toHaveLength(0); // switching on answers nothing from before
+    h.advance(1);
+    expect(await c.say('deposit nahi aaya')).toMatch(/deposit check karne ke liye/); // a new message is answered
   });
 
-  it('a turn caught mid-flight by /botoff is put back, not lost, and not counted as a failure', async () => {
+  it('a turn queued just before /botoff is not answered after /boton either', async () => {
     const c = h.user('c7');
-    await c.deliver(c.build({ text: 'withdrawal nahi aaya' }));
+    await c.deliver(c.build({ text: 'withdrawal nahi aaya' })); // queued while ON, not yet run
     await h.app.botSwitch.set(false);
-    await h.app.processor.process(c.id, [c.build({ text: 'withdrawal nahi aaya' })]).catch(() => undefined);
-    const jobs = h.queue.all();
-    expect(jobs.filter((j) => j.status === 'pending')).toHaveLength(1);
-    expect(jobs[0]?.attempts).toBe(0);
+    expect(await h.drain()).toBe(0); // gated while OFF
+    h.advance(1);
     await h.app.botSwitch.set(true);
-    await h.drain();
-    expect(c.last).toMatch(/withdrawal check karne ke liye/);
+    expect(await h.drain()).toBe(1); // the job runs…
+    expect(c.replies).toHaveLength(0); // …and ignores the message: it is from before the switch-on
+    expect(await h.casesOf(c.id)).toHaveLength(0);
   });
 
   it('while OFF, a PAYMENT CONFIRMED from the export bot waits too; the customer is told after /boton', async () => {

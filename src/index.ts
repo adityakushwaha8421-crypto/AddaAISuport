@@ -123,6 +123,8 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       historyMessages: env.HISTORY_MESSAGES,
       customerTimezone: env.CUSTOMER_TIMEZONE,
       caseReplies: env.CASE_REPLIES,
+      staleSeconds: env.STALE_MESSAGE_SECONDS,
+      botStateFile: env.BOT_STATE_FILE,
       reopenWindowHours: env.CASE_IDLE_CLOSE_HOURS,
       workflow: { maxAsksPerSlot: env.MAX_ASKS_PER_SLOT, withdrawalSlaHours: env.WITHDRAWAL_PROCESSING_SLA_HOURS, depositLookbackDays: 30, refreshMinutes: 10, maxPasswordAttempts: 3 },
       debounceMs: env.TURN_DEBOUNCE_MS,
@@ -141,8 +143,9 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       onRestart: role === 'worker' ? undefined : ctx.requestRestart,
     },
   );
-  // ON/OFF survives an in-process restart even with the in-memory store.
-  if (ctx.previous?.botOn !== undefined) await app.botSwitch.seed(ctx.previous.botOn);
+  // ON/OFF survives every kind of restart: the store (Postgres) or, for the in-memory store, the
+  // in-process carry-over of a /restart and the state file for a full process restart.
+  await app.botSwitch.restore(ctx.previous?.botOn);
 
   let draining = false;
   const runsJobs = role !== 'gateway';
@@ -170,9 +173,11 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     log.info({ [localFolders.title('match')]: counts.match, [localFolders.title('support')]: counts.support }, 'chat folders on (chats per folder)');
   }
   if (userTransport) {
-    // Only the process that receives messages can know which ones were never queued.
-    const recovered = await app.recover(15);
-    if (recovered) log.info({ recovered }, 're-queued messages left unprocessed by a previous run');
+    // Old messages are not answered after a restart (RECOVER_UNPROCESSED_MINUTES=0, the default).
+    if (env.RECOVER_UNPROCESSED_MINUTES > 0) {
+      const recovered = await app.recover(env.RECOVER_UNPROCESSED_MINUTES);
+      if (recovered) log.info({ recovered }, 're-queued messages left unprocessed by a previous run');
+    }
     await app.outbox.flushPending();
     app.worker.start(env.HANDOFF_RETRY_INTERVAL_SECONDS * 1000); // periodic maintenance runs once, here
   }

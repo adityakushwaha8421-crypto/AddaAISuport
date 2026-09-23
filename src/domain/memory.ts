@@ -47,6 +47,8 @@ export interface UserMemory {
   lastSeenOn?: string;
   /** When a match issue was filed for the team and no human has answered since: the chat is theirs, the bot holds off. */
   matchReviewPending?: string;
+  /** When the chat's Telegram history was checked for an existing human conversation (done once per customer). */
+  conversationChecked?: string;
 }
 
 /** Calendar day of `date` in the customers' timezone, as YYYY-MM-DD. */

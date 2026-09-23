@@ -17,3 +17,6 @@ secrets/
 admin-storage-state.json
 data/tmp/
 logs/
+
+# Runtime state (bot ON/OFF mirror)
+data/bot-state.json

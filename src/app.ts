@@ -41,6 +41,10 @@ export interface AppConfig {
   caseReplies?: 'request_only' | 'conversational';
   /** Customer-facing sends at all; defaults to the code-level hold in `control/customerMessaging.ts`. */
   customerMessaging?: boolean;
+  /** A customer message older than this when the bot gets to it is never answered. 0: no limit. */
+  staleSeconds?: number;
+  /** Mirror of the ON/OFF switch on disk, so OFF survives a full restart with the in-memory store. */
+  botStateFile?: string;
   reopenWindowHours: number;
   workflow: WorkflowConfig;
   /** A customer's rapid-fire messages are handled as one turn: wait this long after the latest … */
@@ -154,7 +158,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   // The ON/OFF switch lives in the shared store, so every process reads the same state. Everything
   // automatic sends through `transport`, which re-reads the switch right before each send or forward
   // and refuses while OFF; only the admin replies (/boton, /botoff, /restart) bypass it.
-  const botSwitch = c.botSwitch ?? new BotSwitch({ settings: c.store.settings, log: c.log, clock: c.clock });
+  const botSwitch = c.botSwitch ?? new BotSwitch({ settings: c.store.settings, log: c.log, clock: c.clock, stateFile: cfg.botStateFile });
   const customerMessaging = cfg.customerMessaging ?? CUSTOMER_MESSAGING_ENABLED;
   if (!customerMessaging) c.log.warn('CUSTOMER MESSAGING IS DISABLED (control/customerMessaging.ts): no automatic message reaches any customer');
   const transport = guardTransport(c.transport, botSwitch, c.log.child({ mod: 'bot-switch' }), { customerMessaging, internalChats: [cfg.supportChatId, cfg.exportChatId] });
@@ -208,7 +212,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     knowledge: c.knowledge,
     locks,
     patterns: c.patterns,
-    cfg: { historyMessages: cfg.historyMessages, customerTimezone: cfg.customerTimezone, caseReplies: cfg.caseReplies ?? 'request_only', customerMessaging, reopenWindowHours: cfg.reopenWindowHours, workflow: cfg.workflow },
+    cfg: { historyMessages: cfg.historyMessages, customerTimezone: cfg.customerTimezone, caseReplies: cfg.caseReplies ?? 'request_only', customerMessaging, staleSeconds: cfg.staleSeconds, reopenWindowHours: cfg.reopenWindowHours, workflow: cfg.workflow },
     log: c.log,
     metrics: c.metrics,
     clock: c.clock,
@@ -279,6 +283,17 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     async onMessage(msg) {
       // An authorised admin's /boton, /botoff or /restart is acted on at once and never enters the customer pipeline.
       if (await adminCommands.handle({ chatId: msg.chatId, messageId: msg.messageId, fromUserId: msg.userId, text: messageBody(msg) })) return;
+      // FIRST LINE for every customer message: bot_enabled, fresh from the shared store. OFF → the message
+      // is kept in the transcript (marked handled) and otherwise ignored: no queue, no AI, no folder, no
+      // reply — not now, and not after /boton. The same for a message that is already stale on arrival.
+      const off = !(await botSwitch.isOnNow());
+      const stale = (cfg.staleSeconds ?? 0) > 0 && now().getTime() - msg.date.getTime() > (cfg.staleSeconds ?? 0) * 1000;
+      if (off || stale) {
+        const { inserted } = await processor.receive(msg).then((i) => ({ inserted: i }));
+        if (inserted) await c.store.messages.markProcessed(msg.chatId, [msg.messageId], { turnId: off ? 'ignored:bot_off' : 'ignored:stale' });
+        c.log.info({ chat: msg.chatId, message: msg.messageId, reason: off ? 'bot_off' : 'stale_message' }, 'customer message ignored');
+        return;
+      }
       manualExports?.noteInbound(msg); // so a hand-forwarded file can be traced back to its customer
       if (await processor.receive(msg)) await queueTurn(msg.chatId, msg.messageId, now());
     },

@@ -71,6 +71,9 @@ export class RemoteTransport implements Transport, ReadStateApi {
   async deleteMessage(chatId: string, messageId: number) {
     await this.call('telegram/delete', { chatId, messageId }, { attempts: 2 });
   }
+  recentOutgoing(chatId: string, limit: number) {
+    return this.call<number[]>('telegram/recent-outgoing', { chatId, limit });
+  }
   seenByHuman(chatId: string, messageId: number) {
     return this.call<boolean>('telegram/seen-by-human', { chatId, messageId });
   }

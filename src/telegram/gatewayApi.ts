@@ -71,6 +71,8 @@ export function gatewayRoutes(deps: GatewayApiDeps): RouteHandler {
         case 'telegram/delete':
           if (t.deleteMessage) await t.deleteMessage(String(b.chatId), Number(b.messageId));
           return json(res, 200, { ok: true }), true;
+        case 'telegram/recent-outgoing':
+          return json(res, 200, t.recentOutgoing ? await t.recentOutgoing(String(b.chatId), Number(b.limit) || 30) : []), true;
         case 'telegram/seen-by-human':
           return json(res, 200, t.seenByHuman ? await t.seenByHuman(String(b.chatId), Number(b.messageId)) : false), true;
         case 'telegram/download': {
