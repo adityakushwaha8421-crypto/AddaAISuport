@@ -108,8 +108,8 @@ TEST_DATABASE_URL=postgres://… npm test   # also run the storage contract agai
 - `tests/unit/adminControl.test.ts` — `/boton`, `/botoff`, `/restart`, the switch and the supervisor.
 - `tests/unit/security.test.ts` — env validation, secret scrubbing, session encryption.
 - `tests/unit/storage.contract.test.ts` — users, messages, settings (memory / pg-mem / Postgres).
-- `tests/unit/userTransport.*.test.ts`, `telegram.test.ts`, `folders.test.ts`, `readState.test.ts` —
-  the Telegram transport (message mapping, Saved Messages routing, own sends, folders, read state).
+- `tests/unit/userTransport.savedMessages.test.ts`, `telegram.test.ts`, `readState.test.ts` — the
+  Telegram transport (message mapping, sender screening, Saved Messages routing, own sends, read state).
 
 ## Security rules (unchanged)
 

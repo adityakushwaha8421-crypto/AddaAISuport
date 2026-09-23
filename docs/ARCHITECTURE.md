@@ -42,8 +42,8 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | Module | Role |
 |---|---|
 | `config/env.ts` | zod-validated environment; refuses secrets in path settings; `secretValues()` feeds the scrubber |
-| `telegram/transport.ts` | the `Transport` interface (send, forward, download, typing, delete, recent outgoing, folders, read state) |
-| `telegram/user/*` | GramJS implementation, session stores (string / encrypted file), login + session scripts, folders + read-state helpers |
+| `telegram/transport.ts` | the `Transport` interface (send text, delete own message, health) and `ReadStateApi` |
+| `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bot / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
 | `control/botSwitch.ts` | `bot_enabled` in the store's `settings` + `BOT_STATE_FILE` mirror; `isOnNow()` reads fresh; `restore()` at boot |
 | `control/adminCommands.ts` | `/boton` `/botoff` `/restart` for `ADMIN_TELEGRAM_IDS` and the owner in Saved Messages |
 | `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `payment_confirmed`} |
@@ -53,9 +53,9 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | `control/guardedTransport.ts` | wraps the transport: refuses customer sends/forwards while disabled or OFF; team chats pass |
 | `storage/*` | `users`, `messages`, `evidence_requests`, `settings` repos over memory or Postgres; append-only migrations (old tables remain, unused) |
 | `llm/*` | OpenAI client (`LlmClient`, `OpenAiLlm`, `DisabledLlm`, `ScriptedLlm`); the only prompt is the issue-type classifier |
-| `security/*` | scrubber (secrets never reach logs), AES-256-GCM for the session file, masking helpers |
+| `security/*` | scrubber (secrets never reach logs), AES-256-GCM for the session file |
 | `observability/*` | pino logger, health/readiness/metrics server, minimal Prometheus registry |
-| `util/*` | instance lock, keyed mutex, token buckets / semaphore |
+| `util/*` | instance lock, token buckets / semaphore |
 
 ## 3. Rules that hold today
 
