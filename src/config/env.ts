@@ -46,6 +46,16 @@ const envSchema = z.object({
   TELEGRAM_SEND_RATE: z.coerce.number().positive().default(20),
   TELEGRAM_CHAT_SEND_RATE: z.coerce.number().positive().default(1),
 
+  // ── Workflow: one evidence request per case ─────────────────────────────
+  /** A customer message older than this (seconds) when handled is never answered (restart, reconnect catch-up). 0: no limit. */
+  STALE_MESSAGE_SECONDS: int(300),
+  /** An open request of the same type younger than this keeps the case silent; after it a new message may be asked again. */
+  CASE_REOPEN_HOURS: int(48),
+  /** A message a human already read on Telegram is theirs to answer: no request for it. */
+  REPLY_ONLY_TO_UNREAD: bool(true),
+  /** Typed by a human in a customer chat to hand it back to the agent (deleted again). "/bot" always works too. */
+  AI_RESUME_COMMAND: z.string().trim().min(1).default('/ai'),
+
   // ── Database ────────────────────────────────────────────────────────────
   STORE: z.enum(['postgres', 'memory']).default('postgres'),
   DATABASE_URL: optionalString,

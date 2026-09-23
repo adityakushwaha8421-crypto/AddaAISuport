@@ -1,34 +1,54 @@
 # FA Support Agent
 
 A Telegram agent for Fantasy Adda customer support, running on a **personal Telegram account**
-(GramJS / MTProto, no bot token). **The automatic reply system has been removed.** What runs today:
+(GramJS / MTProto, no bot token). It does exactly two things towards customers, and nothing else:
 
-- connects to Telegram with the account's session and stays connected (reconnects, session checks);
-- **receives and stores** every customer message (text, captions, media references) with the
-  sender, in Postgres or an in-memory store — and **sends nothing back to any customer**;
-- answers only the admin's commands: `/boton`, `/botoff`, `/restart`;
-- health (`GET /healthz`, `/readyz`) and Prometheus metrics (`GET /metrics`);
-- infrastructure kept for the workflows to come: the OpenAI client (unused), the storage layer,
-  the secret scrubber, the rate limiters, the Telegram folder/read-state helpers.
+1. **One evidence request per case.** When a customer's message is clearly a **deposit** problem
+   (money paid into the wallet, not showing) or a **withdrawal** problem (money withdrawn, not in
+   the bank), read from the direction of the money in Hinglish/Hindi/English, the agent sends the
+   list of documents the team needs — **once** — in the customer's language. After that it is
+   silent in that case: no acknowledgements, reminders, status updates or follow-ups, whatever the
+   customer writes or sends. The human team handles everything from there.
+2. **One solved note per confirmed payment.** When the export bot sends `✅ PAYMENT CONFIRMED`
+   naming a `User ID`, exactly that customer is told once, in their language:
+   *"Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏"*
 
-Reply workflows will be added one by one. Until then there is **no AI processing, no greeting, no
-evidence request, no follow-up, no confirmation, no forwarding — zero automatic messages**. The
-full previous implementation is in git history (commit `de1427a` and earlier).
+Everything else — greetings, thanks, match issues, app/login problems, questions, unclear money
+messages, bare photos — is received and stored and gets **no reply**. There is no clarification
+question and no guess: when the issue is not clearly one of the two, the agent stays silent.
 
+The previous, much larger reply system is in git history (commit `de1427a` and earlier).
 Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## What the request asks for
+
+| Case | Requested (once) |
+|---|---|
+| Deposit | 10-digit registered number · payment screenshot · bank statement PDF of the account paid from · screen recording (video) of the payment |
+| Withdrawal | Withdrawal ID **or** withdrawal-history screenshot · bank statement PDF of the account the amount should have reached |
+
+## When the agent stays silent even for a deposit/withdrawal message
+
+- `/botoff` is in force (checked first, fresh from the store, and again inside the transport right before the send).
+- The chat already has an open request of the same type younger than `CASE_REOPEN_HOURS` (48).
+  A clearly named problem of the *other* type gets its own single request.
+- A human wrote in that chat from the account (until they type `/ai` or `/bot` there, which is deleted again).
+- A human already read the message on Telegram (`REPLY_ONLY_TO_UNREAD`).
+- The message is older than `STALE_MESSAGE_SECONDS` (300) when handled: a restart or reconnect catch-up never answers old messages.
+- The message has no text (a bare screenshot or file says nothing about the issue).
 
 ## Two safety nets
 
-1. **Customer messaging switch (code).** `src/control/customerMessaging.ts` holds
-   `CUSTOMER_MESSAGING_ENABLED = false` and an empty allowlist. Every automatic code path must send
-   through the guarded transport (`app.transport`), which refuses any send or forward to a chat that
-   is not the support group or the export bot. So nothing added later can message a customer by
-   accident until it is deliberately enabled there.
+1. **Customer messaging allowlist (code).** `src/control/customerMessaging.ts` keeps
+   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly two message kinds through:
+   `evidence_request` and `payment_confirmed`. Every automatic code path sends through the guarded
+   transport (`app.transport`), which refuses any other send or forward to a chat that is not the
+   support group or the export bot. Nothing added later can message a customer until it is listed there.
 2. **Kill switch (runtime).** `/botoff` sets `bot_enabled = false` in the store (shared by every
    process) and mirrors it to `BOT_STATE_FILE` (`data/bot-state.json`) so it survives a full
-   restart even with `STORE=memory`, a `/restart`, and any reconnect. The guarded transport reads
-   it fresh right before every send. `/boton` turns it back on. Today the switch changes nothing
-   visible, since nothing replies; it is recorded on each stored message (`meta.ignored`).
+   restart even with `STORE=memory`, a `/restart`, and any reconnect. Both workflows check it at
+   their first line and the guarded transport reads it fresh right before every send. `/boton` turns
+   it back on; messages that arrived while OFF are never answered.
 
 ## Setup
 
@@ -61,9 +81,10 @@ same words are an ordinary customer message: stored, not acted on, not answered.
 
 - `users` — Telegram id, chat id, username, first name, language code.
 - `messages` — every inbound customer message (text/caption after secret scrubbing, media
-  references, reply-to id, Telegram date), marked `processedAt` on arrival with
-  `meta.ignored = no_reply_system` (or `bot_off`). Outbound rows will come with the workflows.
-- `settings` — `bot.enabled`, `bot.enabledAt`.
+  references, reply-to id, Telegram date) and every outbound one (`meta.kind`).
+- `evidence_requests` — one row per case: chat, user, issue type, language, status
+  (`sending` → `sent` → `solved`), the request's Telegram id.
+- `settings` — `bot.enabled`, `bot.enabledAt`, and one `payment_confirmed:…` key per payment told.
 
 Messages from the account's own contacts (`TELEGRAM_IGNORE_CONTACTS=true`), from bots, from
 Telegram's service account and from the owner's own account are never treated as customer messages.
@@ -77,9 +98,13 @@ npm run typecheck
 TEST_DATABASE_URL=postgres://… npm test   # also run the storage contract against real Postgres
 ```
 
-- `tests/unit/receiveOnly.test.ts` — the agent receives and stores messages of every kind, ON and
-  OFF, and sends **zero** messages to customers; admin commands still answer the admin; the guarded
-  transport refuses any attempt to message a customer.
+- `tests/unit/evidenceRequest.test.ts` — the workflow end to end: deposit/withdrawal read from
+  natural phrasing in three languages, one request then silence for every follow-up, a second
+  different issue, human takeover and `/ai`, read-by-human, `/botoff`, stale messages, failed
+  sends, and the PAYMENT CONFIRMED note (exact user, once per payment, language, no User ID → nobody).
+- `tests/unit/moneyDirection.test.ts` — the phrasing tables for the direction scorer.
+- `tests/unit/receiveOnly.test.ts` — everything else is stored and gets **zero** messages; admin
+  commands still answer the admin; the guarded transport refuses any other customer send.
 - `tests/unit/adminControl.test.ts` — `/boton`, `/botoff`, `/restart`, the switch and the supervisor.
 - `tests/unit/security.test.ts` — env validation, secret scrubbing, session encryption.
 - `tests/unit/storage.contract.test.ts` — users, messages, settings (memory / pg-mem / Postgres).

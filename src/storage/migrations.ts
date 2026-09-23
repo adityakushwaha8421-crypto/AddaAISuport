@@ -181,4 +181,22 @@ CREATE TABLE settings (
 );
 `,
   },
+  {
+    id: '004_evidence_requests',
+    sql: `
+CREATE TABLE evidence_requests (
+  id                   uuid PRIMARY KEY,
+  chat_id              text NOT NULL,
+  user_id              text NOT NULL,
+  issue_type           text NOT NULL,
+  language             text NOT NULL,
+  status               text NOT NULL,
+  telegram_message_id  bigint,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  solved_at            timestamptz
+);
+CREATE INDEX evidence_requests_chat_idx ON evidence_requests (chat_id, status, created_at);
+CREATE INDEX evidence_requests_user_idx ON evidence_requests (user_id, status);
+`,
+  },
 ];

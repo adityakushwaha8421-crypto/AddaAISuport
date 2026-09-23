@@ -15,6 +15,10 @@ export interface UserRecord {
   username?: string;
   firstName?: string;
   languageCode?: string;
+  /** Language of the customer's own messages, as last detected (the solved note is written in it). */
+  preferredLanguage?: 'hinglish' | 'english' | 'hindi';
+  /** A human wrote in this chat from the account: theirs until this time (far future = until the resume command). */
+  humanTakeoverUntil?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +26,36 @@ export interface UserRecord {
 export interface UserRepo {
   upsert(u: Pick<UserRecord, 'id' | 'chatId'> & Partial<UserRecord>): Promise<UserRecord>;
   get(id: string): Promise<UserRecord | undefined>;
+  setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']): Promise<void>;
+  setHumanTakeover(userId: string, until: Date | undefined): Promise<void>;
+}
+
+// ── Evidence requests (one per case) ───────────────────────────────────────
+
+export type EvidenceRequestStatus = 'sending' | 'sent' | 'solved';
+
+export interface EvidenceRequest {
+  id: string;
+  chatId: string;
+  userId: string;
+  issueType: 'deposit' | 'withdrawal';
+  language: 'hinglish' | 'english' | 'hindi';
+  status: EvidenceRequestStatus;
+  /** Telegram id of the request message, once sent. */
+  telegramMessageId?: number;
+  createdAt: Date;
+  solvedAt?: Date;
+}
+
+export interface EvidenceRequestRepo {
+  create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }): Promise<EvidenceRequest>;
+  markSent(id: string, telegramMessageId: number): Promise<void>;
+  /** The request never went out: forget it so the next message may ask again. */
+  remove(id: string): Promise<void>;
+  /** Requests in a chat that are not solved, newest first. */
+  listOpen(chatId: string): Promise<EvidenceRequest[]>;
+  /** Close every open request of a user (the team confirmed the payment). Returns how many. */
+  markSolved(userId: string, at: Date): Promise<number>;
 }
 
 // ── Messages ───────────────────────────────────────────────────────────────
@@ -32,7 +66,9 @@ export interface MessageMeta {
   scrubbed?: boolean;
   /** Outbound: the text carries Telegram HTML markup. */
   html?: boolean;
-  /** Why an inbound message was left alone (e.g. `bot_off`). */
+  /** Inbound: what happened to it (e.g. `requested`, `already_requested`, `bot_off`). Outbound: what it is (`evidence_request`, `payment_confirmed`). */
+  kind?: string;
+  /** @deprecated use kind */
   ignored?: string;
 }
 
@@ -78,6 +114,7 @@ export interface Store {
   settings: SettingsRepo;
   users: UserRepo;
   messages: MessageRepo;
+  requests: EvidenceRequestRepo;
   healthy(): Promise<boolean>;
   close(): Promise<void>;
 }

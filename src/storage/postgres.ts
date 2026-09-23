@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 import { migrate, type Queryable } from './migrate.js';
-import type { MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
+import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
 
 /** A pool-like object: pg.Pool in production, pg-mem's adapter in tests. */
 export interface PoolLike extends Queryable {
@@ -35,8 +35,22 @@ const toUser = (r: Row): UserRecord => ({
   username: str(r.username),
   firstName: str(r.first_name),
   languageCode: str(r.language_code),
+  preferredLanguage: str(r.preferred_language) as UserRecord['preferredLanguage'],
+  humanTakeoverUntil: date(r.human_takeover_until),
   createdAt: new Date(r.created_at),
   updatedAt: new Date(r.updated_at),
+});
+
+const toRequest = (r: Row): EvidenceRequest => ({
+  id: r.id,
+  chatId: r.chat_id,
+  userId: r.user_id,
+  issueType: r.issue_type,
+  language: r.language,
+  status: r.status,
+  telegramMessageId: num(r.telegram_message_id),
+  createdAt: new Date(r.created_at),
+  solvedAt: date(r.solved_at),
 });
 
 const toMessage = (r: Row): StoredMessage => ({
@@ -76,6 +90,37 @@ class PgUsers implements UserRepo {
   async get(userId: string) {
     const { rows } = await this.db.query(`SELECT * FROM users WHERE id = $1`, [userId]);
     return rows[0] ? toUser(rows[0]) : undefined;
+  }
+  async setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']) {
+    await this.db.query(`UPDATE users SET preferred_language = $2, updated_at = now() WHERE id = $1`, [userId, lang ?? null]);
+  }
+  async setHumanTakeover(userId: string, until: Date | undefined) {
+    await this.db.query(`UPDATE users SET human_takeover_until = $2, updated_at = now() WHERE id = $1`, [userId, until ?? null]);
+  }
+}
+
+class PgRequests implements EvidenceRequestRepo {
+  constructor(private db: Queryable) {}
+  async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }) {
+    const { rows } = await this.db.query(
+      `INSERT INTO evidence_requests (id, chat_id, user_id, issue_type, language, status, created_at) VALUES ($1,$2,$3,$4,$5,'sending',$6) RETURNING *`,
+      [randomUUID(), r.chatId, r.userId, r.issueType, r.language, r.createdAt ?? new Date()],
+    );
+    return toRequest(rows[0]);
+  }
+  async markSent(id: string, telegramMessageId: number) {
+    await this.db.query(`UPDATE evidence_requests SET status = 'sent', telegram_message_id = $2 WHERE id = $1`, [id, telegramMessageId]);
+  }
+  async remove(id: string) {
+    await this.db.query(`DELETE FROM evidence_requests WHERE id = $1`, [id]);
+  }
+  async listOpen(chatId: string) {
+    const { rows } = await this.db.query(`SELECT * FROM evidence_requests WHERE chat_id = $1 AND status <> 'solved' ORDER BY created_at DESC`, [chatId]);
+    return rows.map(toRequest);
+  }
+  async markSolved(userId: string, at: Date) {
+    const r = await this.db.query(`UPDATE evidence_requests SET status = 'solved', solved_at = $2 WHERE user_id = $1 AND status <> 'solved'`, [userId, at]);
+    return r.rowCount ?? 0;
   }
 }
 
@@ -138,11 +183,13 @@ export class PostgresStore implements Store {
   readonly settings: SettingsRepo;
   readonly users: UserRepo;
   readonly messages: MessageRepo;
+  readonly requests: EvidenceRequestRepo;
 
   constructor(readonly pool: PoolLike) {
     this.settings = new PgSettings(pool);
     this.users = new PgUsers(pool);
     this.messages = new PgMessages(pool);
+    this.requests = new PgRequests(pool);
   }
 
   async migrate(log?: Logger): Promise<string[]> {

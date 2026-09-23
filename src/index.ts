@@ -37,7 +37,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
   const metrics = new Metrics();
 
   const store = await createStore(env, log.child({ mod: 'store' }));
-  // The OpenAI client is kept as infrastructure for the workflows to come; nothing calls it today.
+  // The model is used for one thing: telling deposit from withdrawal when the lexical scorer cannot.
   const llm: LlmClient = env.OPENAI_API_KEY
     ? new OpenAiLlm({
         apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL, model: env.OPENAI_MODEL, visionModel: env.OPENAI_VISION_MODEL,
@@ -46,15 +46,21 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       })
     : new DisabledLlm();
 
+  if (!llm.available) log.warn('OPENAI_API_KEY not set: deposit/withdrawal is read by the lexical scorer only');
+  if (!env.EXPORT_BOT_ID) log.warn('EXPORT_BOT_ID not set: PAYMENT CONFIRMED messages cannot be recognised');
+
   const transport = createTransport(env, log);
   const app: App = assemble(
-    { store, transport, log, metrics },
+    { store, transport, log, metrics, llm, readState: env.REPLY_ONLY_TO_UNREAD ? transport : undefined },
     {
       adminIds: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
       onRestart: ctx.requestRestart,
       botStateFile: env.BOT_STATE_FILE,
       supportChatId: env.SUPPORT_GROUP_CHAT_ID,
       exportChatId: env.EXPORT_BOT_ID,
+      staleSeconds: env.STALE_MESSAGE_SECONDS,
+      reopenHours: env.CASE_REOPEN_HOURS,
+      resumeCommand: env.AI_RESUME_COMMAND,
     },
   );
   // ON/OFF survives every kind of restart: the store (Postgres) or, for the in-memory store, the
@@ -67,7 +73,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
   const health = await startHealthServer(env.HTTP_PORT, live, metrics, env.HTTP_HOST, { ready: { accepting: () => !draining } });
 
   await transport.start({
-    onMessage: (m) => app.onMessage(m),
+    onMessage: async (m) => void (await app.onMessage(m)),
     onSupportMessage: (m) => app.onSupportMessage(m),
     onOwnOutgoing: (e) => app.onOwnOutgoing(e),
     onExportMessage: (m) => app.onExportMessage(m),
@@ -75,8 +81,8 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     onAdminCommand: (e) => app.onAdminCommand(e),
   });
   log.info(
-    { llm: llm.available, port: env.HTTP_PORT, botOn: await app.botSwitch.current(), admins: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').filter(Boolean).length, replySystem: 'none' },
-    'agent running: receiving and storing messages; no automatic replies',
+    { llm: llm.available, port: env.HTTP_PORT, botOn: await app.botSwitch.current(), admins: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').filter(Boolean).length, workflows: ['evidence_request', 'payment_confirmed'] },
+    'agent running: one evidence request per deposit/withdrawal case, one solved note per confirmed payment, nothing else',
   );
 
   let stopped = false;

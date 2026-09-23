@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
+import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
 
 /** Deep copy so callers can't mutate stored state without saving (mirrors DB semantics). */
 const clone = <T>(v: T): T => structuredClone(v);
@@ -17,6 +17,40 @@ class MemoryUsers implements UserRepo {
   async get(id: string) {
     const r = this.rows.get(id);
     return r ? clone(r) : undefined;
+  }
+  async setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']) {
+    const r = this.rows.get(userId);
+    if (r) r.preferredLanguage = lang;
+  }
+  async setHumanTakeover(userId: string, until: Date | undefined) {
+    const r = this.rows.get(userId);
+    if (r) r.humanTakeoverUntil = until;
+  }
+}
+
+class MemoryRequests implements EvidenceRequestRepo {
+  readonly rows: EvidenceRequest[] = [];
+  async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }) {
+    const { createdAt, ...rest } = r;
+    const row: EvidenceRequest = { ...rest, id: randomUUID(), status: 'sending', createdAt: createdAt ?? new Date() };
+    this.rows.push(row);
+    return clone(row);
+  }
+  async markSent(id: string, telegramMessageId: number) {
+    const r = this.rows.find((x) => x.id === id);
+    if (r) Object.assign(r, { status: 'sent', telegramMessageId });
+  }
+  async remove(id: string) {
+    const i = this.rows.findIndex((x) => x.id === id);
+    if (i >= 0) this.rows.splice(i, 1);
+  }
+  async listOpen(chatId: string) {
+    return clone(this.rows.filter((r) => r.chatId === chatId && r.status !== 'solved').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+  }
+  async markSolved(userId: string, at: Date) {
+    let n = 0;
+    for (const r of this.rows) if (r.userId === userId && r.status !== 'solved') Object.assign(r, { status: 'solved', solvedAt: at }), n++;
+    return n;
   }
 }
 
@@ -62,6 +96,7 @@ export class MemoryStore implements Store {
   settings = new MemorySettings();
   users = new MemoryUsers();
   messages = new MemoryMessages();
+  requests = new MemoryRequests();
   async healthy() {
     return true;
   }
