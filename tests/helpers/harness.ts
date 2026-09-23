@@ -1,3 +1,4 @@
+import { DeferJobError } from '../../src/queue/runner.js';
 import { assemble, type App } from '../../src/app.js';
 import { FixtureAdminGateway, type AdminFixtures } from '../../src/admin/fixture.js';
 import type { AdminGateway } from '../../src/domain/admin.js';
@@ -258,7 +259,13 @@ export class UserSim {
     const inserted = await this.h.app.processor.receive(msg);
     if (this.pendingRead) this.h.transport.humanReads(this.id);
     this.pendingRead = false;
-    if (inserted) await this.h.app.processor.process(this.id, [msg]);
+    if (inserted) {
+      try {
+        await this.h.app.processor.process(this.id, [msg]);
+      } catch (err) {
+        if (!(err instanceof DeferJobError)) throw err; // the agent is switched off: the turn waits
+      }
+    }
     return this.replies.length > before ? this.last : '';
   }
 

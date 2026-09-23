@@ -120,6 +120,14 @@ export class PostgresQueue implements Queue {
     );
   }
 
+  async release(id: string, worker: string, runAt: Date) {
+    await this.db.query(
+      `UPDATE jobs SET status = 'pending', run_at = $3, worker = NULL, leased_until = NULL, attempts = GREATEST(attempts - 1, 0)
+       WHERE id = $1 AND worker = $2 AND status = 'running'`,
+      [id, worker, runAt],
+    );
+  }
+
   async reapExpired(now = this.clock()) {
     const { rowCount } = await this.db.query(
       `UPDATE jobs SET status = 'pending', worker = NULL, leased_until = NULL, last_error = 'lease expired'

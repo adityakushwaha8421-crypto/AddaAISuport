@@ -22,7 +22,7 @@ export interface WorkerOptions {
   composer?: ResponseComposer;
   exportRetryAfterMs?: number;
   maxExportAttempts?: number;
-  /** While OFF, exports (which end in a message to the customer) wait. */
+  /** While OFF, every background duty waits. */
   botSwitch?: { isOn(): Promise<boolean> };
 }
 
@@ -50,6 +50,7 @@ export class HandoffWorker {
 
   async tick(): Promise<void> {
     if (this.running) return;
+    if (this.o.botSwitch && !(await this.o.botSwitch.isOn())) return; // OFF: every background duty waits too
     this.running = true;
     try {
       await this.retryTickets();
@@ -92,7 +93,6 @@ export class HandoffWorker {
   async retryExports(): Promise<number> {
     const { store, locks, log, exporter, composer } = this.o;
     if (!exporter || !composer) return 0;
-    if (this.o.botSwitch && !(await this.o.botSwitch.isOn())) return 0; // OFF: nothing automatic reaches a customer
     const now = this.o.clock?.() ?? new Date();
     const retryAfter = this.o.exportRetryAfterMs ?? 2 * 60_000;
     const maxAttempts = this.o.maxExportAttempts ?? 20;

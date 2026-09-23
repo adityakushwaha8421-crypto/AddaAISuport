@@ -205,7 +205,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     store: c.store, handoff, outbox, locks, log: c.log, maxAttempts: cfg.handoffMaxAttempts, idleCloseHours: cfg.idleCloseHours, clock: c.clock,
     exporter, composer, botSwitch,
   });
-  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log, botSwitch });
+  const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log });
   const manualExports = cfg.exportChatId
     ? new ManualExports({ store: c.store, outbox, transport: c.transport, exportChatId: cfg.exportChatId, locks, log: c.log, metrics: c.metrics, clock: c.clock })
     : undefined;
@@ -214,6 +214,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   // Job handlers: every one of them is safe to run twice (a worker may die mid-job).
   const runner = new JobRunner({
     queue,
+    gate: () => botSwitch.isOn(), // OFF: every job waits; ON: the backlog runs
     log: c.log,
     metrics: c.metrics,
     concurrency: cfg.maxConcurrentTurns,

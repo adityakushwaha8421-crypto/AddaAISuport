@@ -1,3 +1,4 @@
+import { DeferJobError } from '../queue/runner.js';
 import type { Logger } from 'pino';
 import type { CaseService } from '../cases/service.js';
 import { routeTurn } from '../cases/router.js';
@@ -168,13 +169,11 @@ export class TurnProcessor {
     const trace: Record<string, unknown> = { messages: raw.length };
     let filed = false; // the chat folders already reflect this turn
 
-    // Switched OFF by an admin: the message is kept for the humans, and that is all.
+    // Switched OFF by an admin: nothing is done now; the turn waits in the queue for /boton.
     if (this.deps.botSwitch && !(await this.deps.botSwitch.isOn())) {
-      await store.messages.markProcessed(chatId, raw.map((m) => m.messageId), { turnId: turn.id });
-      await store.turns.update(turn.id, { status: 'skipped', trace: scrubber.scrubDeep({ ...trace, reason: 'bot_off' }), completedAt: new Date() });
-      metrics?.turns.inc({ outcome: 'bot_off', intent: 'none', interpreter: 'none' });
-      tlog.info('bot is OFF: no reply');
-      return { turnId: turn.id, replied: false, acts: [] };
+      await store.turns.update(turn.id, { status: 'skipped', trace: scrubber.scrubDeep({ ...trace, reason: 'bot_off_deferred' }), completedAt: new Date() });
+      tlog.info('bot is OFF: turn deferred until it is switched on');
+      throw new DeferJobError('bot is off');
     }
 
     try {

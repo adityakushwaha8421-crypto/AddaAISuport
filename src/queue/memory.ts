@@ -84,6 +84,16 @@ export class MemoryQueue implements Queue {
     } else r.status = 'dead';
   }
 
+  async release(id: string, worker: string, runAt: Date) {
+    const r = this.rows.get(id);
+    if (!r || r.status !== 'running' || r.worker !== worker) return;
+    r.status = 'pending';
+    r.worker = undefined;
+    r.leasedUntil = undefined;
+    r.runAt = runAt;
+    r.attempts = Math.max(0, r.attempts - 1);
+  }
+
   async reapExpired(now = this.clock()) {
     let n = 0;
     for (const r of this.rows.values()) {

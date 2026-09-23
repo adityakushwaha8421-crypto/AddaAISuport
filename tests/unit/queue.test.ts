@@ -158,3 +158,19 @@ describe('JobRunner', () => {
     expect(backoffMs(20)).toBeLessThanOrEqual(5 * 60_000 * 1.3);
   });
 });
+
+describe('release (deferred job)', () => {
+  it('puts a claimed job back to run later without counting the attempt', async () => {
+    const { MemoryQueue } = await import('../../src/queue/memory.js');
+    const q = new MemoryQueue();
+    await q.enqueue({ type: 'turn', orderingKey: 'c', payload: {} });
+    const job = (await q.claim('w', 1000))!;
+    expect(job.attempts).toBe(1);
+    await q.release(job.id, 'w', new Date(Date.now() + 60_000));
+    expect(await q.claim('w', 1000)).toBeUndefined(); // not runnable yet
+    const later = new MemoryQueue(() => new Date(Date.now() + 120_000));
+    void later;
+    const [row] = q.all();
+    expect(row).toMatchObject({ status: 'pending', attempts: 0 });
+  });
+});

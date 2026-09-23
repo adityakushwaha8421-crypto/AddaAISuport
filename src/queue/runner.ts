@@ -6,6 +6,13 @@ import type { Job, JobType, Queue } from './types.js';
 
 export type JobHandler = (job: Job, log: Logger) => Promise<void>;
 
+/** Thrown by a handler that must not run right now (the agent is switched OFF): the job goes back untouched. */
+export class DeferJobError extends Error {
+  constructor(message = 'deferred', readonly retryInMs = 30_000) {
+    super(message);
+  }
+}
+
 export interface RunnerOptions {
   queue: Queue;
   handlers: Partial<Record<JobType, JobHandler>>;
@@ -20,6 +27,8 @@ export interface RunnerOptions {
   clock?: () => Date;
   /** Runner name in logs and leases (defaults to a random id). */
   name?: string;
+  /** While this resolves false nothing is claimed: the work waits in the queue (the agent is switched OFF). */
+  gate?: () => Promise<boolean>;
 }
 
 /** Exponential backoff with jitter: 2s, 4s, 8s … capped at 5 minutes. */
@@ -89,6 +98,10 @@ export class JobRunner {
   async runUntilIdle(): Promise<number> {
     let done = 0;
     for (;;) {
+      if (this.o.gate && !(await this.o.gate())) {
+        await Promise.allSettled([...this.inFlight]);
+        return done;
+      }
       await this.o.queue.reapExpired(this.now());
       const job = await this.o.queue.claim(this.name, this.leaseMs, Object.keys(this.o.handlers) as JobType[]);
       if (!job) {
@@ -112,7 +125,8 @@ export class JobRunner {
       }
       let job: Job | undefined;
       try {
-        job = await this.o.queue.claim(this.name, this.leaseMs, Object.keys(this.o.handlers) as JobType[]);
+        const open = this.o.gate ? await this.o.gate() : true;
+        if (open) job = await this.o.queue.claim(this.name, this.leaseMs, Object.keys(this.o.handlers) as JobType[]);
       } catch (err) {
         this.o.log.error({ err }, 'queue claim failed');
       }
@@ -151,6 +165,15 @@ export class JobRunner {
       if (!lost) await queue.complete(job.id, this.name);
       metrics?.jobs.inc({ type: job.type, outcome: 'ok' });
     } catch (err) {
+      if (err instanceof DeferJobError) {
+        // Not a failure: the agent is paused. The job waits, its attempt not counted.
+        const runAt = new Date(this.now().getTime() + err.retryInMs);
+        if (!lost) await queue.release(job.id, this.name, runAt).catch((e) => log.error({ err: e }, 'could not release a deferred job'));
+        metrics?.jobs.inc({ type: job.type, outcome: 'deferred' });
+        log.info({ runAt }, 'job deferred: agent is switched off');
+        clearInterval(beat);
+        return;
+      }
       const message = scrubber.scrub((err as Error).message ?? String(err));
       const retry = job.attempts < this.maxAttempts;
       const retryAt = retry ? new Date(this.now().getTime() + backoffMs(job.attempts)) : undefined;

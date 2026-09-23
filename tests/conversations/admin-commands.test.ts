@@ -69,7 +69,33 @@ describe('admin commands', () => {
     expect(own.transport.sent).toHaveLength(1);
   });
 
-  it('while OFF, a PAYMENT CONFIRMED from the export bot still closes the case but sends the customer nothing', async () => {
+  it('work that arrives while OFF waits in the queue and runs once the agent is ON again', async () => {
+    const admin = h.user(ADMIN);
+    const c = h.user('c6');
+    await admin.say('/botoff');
+    await c.deliver(c.build({ text: 'deposit nahi aaya' }));
+    expect(await h.drain()).toBe(0); // gated: nothing claimed
+    expect(c.replies).toHaveLength(0);
+    expect(await h.casesOf(c.id)).toHaveLength(0);
+    await admin.say('/boton');
+    expect(await h.drain()).toBeGreaterThan(0);
+    expect(c.last).toMatch(/deposit check karne ke liye/);
+  });
+
+  it('a turn caught mid-flight by /botoff is put back, not lost, and not counted as a failure', async () => {
+    const c = h.user('c7');
+    await c.deliver(c.build({ text: 'withdrawal nahi aaya' }));
+    await h.app.botSwitch.set(false);
+    await h.app.processor.process(c.id, [c.build({ text: 'withdrawal nahi aaya' })]).catch(() => undefined);
+    const jobs = h.queue.all();
+    expect(jobs.filter((j) => j.status === 'pending')).toHaveLength(1);
+    expect(jobs[0]?.attempts).toBe(0);
+    await h.app.botSwitch.set(true);
+    await h.drain();
+    expect(c.last).toMatch(/withdrawal check karne ke liye/);
+  });
+
+  it('while OFF, a PAYMENT CONFIRMED from the export bot waits too; the customer is told after /boton', async () => {
     const u = h.user('8939686943');
     await u.say('deposit nahi aaya');
     for (const step of ['9810822372', 'photo', 'pdf', 'video']) {
@@ -81,8 +107,13 @@ describe('admin commands', () => {
     expect(u.last).toMatch(/shared with our team/);
     await h.user(ADMIN).say('/botoff');
     const sent = h.transport.sent.length;
-    expect(await h.botSays('✅ PAYMENT CONFIRMED\n\n👤 Customer: N K (User ID: 8939686943)\n📱 Mobile: 9810822372')).toBe('solved');
+    await h.app.onExportMessage({ messageId: h.transport.nextId('export'), text: '✅ PAYMENT CONFIRMED\n\n👤 Customer: N K (User ID: 8939686943)\n📱 Mobile: 9810822372' });
+    expect(await h.drain()).toBe(0);
     expect(h.transport.sent).toHaveLength(sent);
+    expect((await h.casesOf(u.id))[0]?.status).not.toBe('resolved');
+    await h.user(ADMIN).say('/boton');
+    await h.drain();
+    expect(u.last).toMatch(/solve ho gaya/);
     expect((await h.casesOf(u.id))[0]?.status).toBe('resolved');
   });
 });

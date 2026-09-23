@@ -236,9 +236,11 @@ follow-up of that case, never a switch of type. `tests/unit/moneyDirection.test.
 in `ADMIN_TELEGRAM_IDS` messaging the account, and from the account owner in Saved Messages (the
 transport routes the owner's own messages there to `onAdminCommand`); from anyone else they are
 ordinary customer text. The ON/OFF state is a row in the `settings` table (`control/botSwitch.ts`),
-so every worker sees it and it survives restarts; OFF makes every turn end before any case work
-(reason `bot_off`), holds export retries and suppresses the "deposit solved" message (the case is
-still closed). `/restart` goes to the process supervisor (`control/supervisor.ts`): the running
+so every worker sees it and it survives restarts. OFF pauses everything automatic: the job runner
+stops claiming (a job caught mid-flight is released back untouched via `DeferJobError`, its attempt
+not counted) and the maintenance worker skips its ticks, so replies, requests, greetings, folder
+filing, exports, confirmations and retries all wait; messages are still received, stored and
+queued. ON lets the backlog run. `/restart` goes to the process supervisor (`control/supervisor.ts`): the running
 agent is stopped cleanly (jobs drained, Telegram disconnected, store closed), `.env` is re-read,
 a fresh agent is booted in the same process under the same instance lock with the ON/OFF state
 carried over, and only then the admin is told "✅ Bot restarted successfully." Boot failures are

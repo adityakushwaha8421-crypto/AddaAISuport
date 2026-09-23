@@ -49,6 +49,8 @@ export interface Queue {
   complete(id: string, worker: string): Promise<void>;
   /** Retry at `retryAt`; without it the job is dead (kept for inspection). */
   fail(id: string, worker: string, error: string, retryAt?: Date): Promise<void>;
+  /** Put a claimed job back untouched, to run at `runAt` (the agent is paused): not an attempt. */
+  release(id: string, worker: string, runAt: Date): Promise<void>;
   /** Return expired leases to the queue (a worker crashed). */
   reapExpired(now?: Date): Promise<number>;
   stats(): Promise<JobStats>;
