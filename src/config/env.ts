@@ -65,7 +65,6 @@ const envSchema = z.object({
   OPENAI_API_KEY: optionalString,
   OPENAI_BASE_URL: optionalString,
   OPENAI_MODEL: z.string().default('gpt-5.6-terra'),
-  OPENAI_VISION_MODEL: z.string().default('gpt-5.6-terra'),
   OPENAI_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high']).optional(),
   OPENAI_TIMEOUT_MS: int(45_000),
   OPENAI_MAX_CONCURRENCY: int(8),

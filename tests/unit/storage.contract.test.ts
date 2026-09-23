@@ -46,14 +46,14 @@ describe.each(allStoreFactories)('Store contract: $name', (factory) => {
     for (let i = 1; i <= 5; i++) {
       await store.messages.insert({
         chatId: 'c1', userId: 'u1', telegramMessageId: i, direction: i % 2 ? 'in' : 'out', text: `m${i}`,
-        media: [], meta: i === 4 ? { ignored: 'bot_off' } : {},
+        media: [], meta: i === 4 ? { kind: 'evidence_request' } : {},
         createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
       });
     }
     const recent = await store.messages.recent('c1', 3);
     expect(recent.map((m) => m.text)).toEqual(['m3', 'm4', 'm5']);
     const m4 = await store.messages.find('c1', 4);
-    expect(m4?.meta.ignored).toBe('bot_off');
+    expect(m4?.meta.kind).toBe('evidence_request');
   });
 
   it('marks inbound messages as looked at', async () => {

@@ -1,8 +1,4 @@
-/** Provider-agnostic LLM surface used by the interpreter, vision extractor and composer. */
-
-export type ContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image'; mimeType: string; data: Buffer; detail?: 'low' | 'high' | 'auto' };
+/** Provider-agnostic LLM surface. Used for one thing today: telling deposit from withdrawal. */
 
 export interface JsonSchema {
   name: string;
@@ -10,11 +6,10 @@ export interface JsonSchema {
 }
 
 export interface LlmRequestBase {
-  /** Short label for metrics/logging: interpret, vision, compose, summary… */
+  /** Short label for metrics/logging. */
   purpose: string;
   system: string;
-  user: string | ContentPart[];
-  model?: 'default' | 'vision';
+  user: string;
   maxTokens?: number;
 }
 

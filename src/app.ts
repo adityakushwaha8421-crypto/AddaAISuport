@@ -8,7 +8,7 @@ import type { LlmClient } from './llm/client.js';
 import type { Metrics } from './observability/metrics.js';
 import { scrubber } from './security/scrubber.js';
 import type { Store } from './storage/types.js';
-import type { ExportForwardEvent, ReadStateApi, SupportGroupMessage, Transport } from './telegram/transport.js';
+import type { ReadStateApi, SupportGroupMessage, Transport } from './telegram/transport.js';
 import { EvidenceRequestWorkflow, type RequestOutcome } from './workflows/evidenceRequest.js';
 import { PaymentConfirmedWorkflow } from './workflows/paymentConfirmed.js';
 
@@ -59,7 +59,6 @@ export interface App {
   onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
   /** The export bot wrote: a valid PAYMENT CONFIRMED with a User ID tells that customer once. */
   onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
-  onExportForward(ev: ExportForwardEvent): Promise<void>;
 }
 
 /**
@@ -126,9 +125,6 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);
       c.metrics?.outbound.inc({ kind: 'payment_confirmed', outcome });
-    },
-    async onExportForward(ev) {
-      c.log.info({ message: ev.messageId }, 'a human forwarded to the export bot (no handler)');
     },
   };
 }

@@ -31,8 +31,8 @@ export interface GuardOptions {
 }
 
 /**
- * The transport every automatic path uses. Right before anything leaves the account — a reply, a
- * forward, even the "typing…" indicator — the switch is read again, fresh from the shared store.
+ * The transport every automatic path uses. Right before anything leaves the account the switch is
+ * read again, fresh from the shared store, and the message kind is checked against the allowlist.
  * OFF cancels the action with a {@link BotOffError}, so a reply prepared while the agent was ON but
  * finished after /botoff is never sent, whichever process prepared it. Admin replies (`/boton`,
  * `/botoff`, `/restart`) use the raw transport: they must work precisely while OFF.
@@ -54,27 +54,13 @@ export function guardTransport(transport: Transport, botSwitch: Pick<BotSwitch, 
     start: (h) => transport.start(h),
     stop: () => transport.stop(),
     healthy: () => transport.healthy(),
-    downloadMedia: (ref) => transport.downloadMedia(ref),
-    messagesExist: (chatId, ids) => transport.messagesExist(chatId, ids),
     async sendText(chatId, text, sendOpts) {
       const hold = held('send', chatId, sendOpts?.kind);
       if (hold) throw hold;
       if (!(await botSwitch.isOnNow())) throw cancelled('send', chatId);
       return transport.sendText(chatId, text, sendOpts);
     },
-    async forwardMessage(fromChatId, messageId, toChatId) {
-      const hold = held('forward', toChatId);
-      if (hold) throw hold;
-      if (!(await botSwitch.isOnNow())) throw cancelled('forward', toChatId);
-      return transport.forwardMessage(fromChatId, messageId, toChatId);
-    },
-    async sendTyping(chatId) {
-      if (held('typing', chatId)) return;
-      if (!(await botSwitch.isOnNow())) return; // silently: typing is not worth an error
-      return transport.sendTyping(chatId);
-    },
   };
   if (transport.deleteMessage) guarded.deleteMessage = (chatId, id) => transport.deleteMessage!(chatId, id);
-  if (transport.recentOutgoing) guarded.recentOutgoing = (chatId, limit) => transport.recentOutgoing!(chatId, limit);
   return guarded;
 }

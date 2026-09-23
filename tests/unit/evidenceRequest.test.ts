@@ -42,8 +42,6 @@ describe('identify the issue, request once, then silence', () => {
     expect(await say('d1', undefined, photo())).toBe('no_text');
     expect(await say('d1', 'statement', pdf())).toBe('already_requested');
     expect(repliesTo('d1')).toHaveLength(1);
-    expect(t.typing).toBe(0);
-    expect(t.forwards).toHaveLength(0);
   });
 
   it('withdrawal: the request lists only the Withdrawal ID / history screenshot and the bank statement PDF', async () => {

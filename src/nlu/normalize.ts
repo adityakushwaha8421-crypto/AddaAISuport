@@ -7,7 +7,7 @@ function asciiDigits(s: string): string {
 }
 
 /** NFKC, strip zero-width chars, Devanagari digits → ASCII, collapse whitespace. Case preserved. */
-export function cleanText(s: string): string {
+function cleanText(s: string): string {
   return asciiDigits(s.normalize('NFKC'))
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[ \t]+/g, ' ')

@@ -9,10 +9,8 @@ export const NOW = new Date('2026-09-23T12:00:00+05:30');
 /** In-memory Telegram: records every send/forward; per-chat sequential ids; read state a test can set. */
 export class FakeTransport implements Transport, ReadStateApi {
   readonly sent: Array<{ chatId: string; text: string; kind?: string; replyTo?: number }> = [];
-  readonly forwards: Array<{ to: string }> = [];
   readonly deleted: Array<{ chatId: string; messageId: number }> = [];
   readonly readUpTo = new Map<string, number>();
-  typing = 0;
   failSends = 0;
   handlers?: TransportHandlers;
   private counters = new Map<string, number>();
@@ -36,19 +34,6 @@ export class FakeTransport implements Transport, ReadStateApi {
     const messageId = this.nextId(chatId);
     this.sent.push({ chatId, text, kind: opts?.kind, replyTo: opts?.replyToMessageId });
     return { messageId };
-  }
-  async forwardMessage(_from: string, _id: number, to: string) {
-    this.forwards.push({ to });
-    return { messageId: this.forwards.length };
-  }
-  async downloadMedia(_ref: MediaRef) {
-    return Buffer.alloc(0);
-  }
-  async messagesExist(_chatId: string, ids: number[]) {
-    return ids;
-  }
-  async sendTyping() {
-    this.typing++;
   }
   async deleteMessage(chatId: string, messageId: number) {
     this.deleted.push({ chatId, messageId });

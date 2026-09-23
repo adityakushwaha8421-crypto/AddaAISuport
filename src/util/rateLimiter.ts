@@ -68,23 +68,3 @@ export class Semaphore {
     return this.active;
   }
 }
-
-/** Retry an operation on transient failures with exponential backoff. */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  opts: { attempts?: number; baseMs?: number; retryOn?: (err: unknown) => boolean; onRetry?: (err: unknown, attempt: number) => void } = {},
-): Promise<T> {
-  const attempts = opts.attempts ?? 3;
-  let last: unknown;
-  for (let i = 1; i <= attempts; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      last = err;
-      if (i === attempts || (opts.retryOn && !opts.retryOn(err))) throw err;
-      opts.onRetry?.(err, i);
-      await new Promise<void>((r) => setTimeout(r, (opts.baseMs ?? 500) * 2 ** (i - 1) * (0.7 + Math.random() * 0.6)).unref());
-    }
-  }
-  throw last;
-}

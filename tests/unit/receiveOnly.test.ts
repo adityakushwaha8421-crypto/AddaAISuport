@@ -36,8 +36,6 @@ describe('receive-only agent', () => {
     await app.onMessage(msg('c0', undefined, [{ kind: 'photo', fileRef: 'f1', fileUniqueId: 'f1', mimeType: 'image/jpeg' }]));
     await app.onMessage(msg('c1', 'statement', [{ kind: 'document', fileRef: 'f2', fileUniqueId: 'f2', mimeType: 'application/pdf', fileName: 's.pdf' }]));
     expect(transport.sent).toHaveLength(0);
-    expect(transport.forwards).toHaveLength(0);
-    expect(transport.typing).toBe(0);
     const c0 = await store.messages.recent('c0', 20);
     expect(c0.length).toBeGreaterThan(0);
     expect(c0.every((m) => m.direction === 'in' && m.processedAt)).toBe(true);
@@ -73,9 +71,7 @@ describe('receive-only agent', () => {
     await app.onSupportMessage({ chatId: SUPPORT, messageId: 1, fromUserId: 'h1', text: 'reply to ticket' });
     await app.onOwnOutgoing({ chatId: 'c1', messageId: 2, text: 'human typed this' });
     await app.onExportMessage({ messageId: 3, text: 'Files received 👍' });
-    await app.onExportForward({ messageId: 4, kind: 'photo' });
     expect(transport.sent).toHaveLength(0);
-    expect(transport.forwards).toHaveLength(0);
   });
 
   it('the guarded transport refuses any other attempt to message a customer; team chats and admin replies are not customers', async () => {
@@ -83,10 +79,7 @@ describe('receive-only agent', () => {
     await expect(app.transport.sendText('c1', 'Sir, ...')).rejects.toBeInstanceOf(BotOffError);
     await expect(app.transport.sendText('c1', 'Sir, ...', { kind: 'reminder' })).rejects.toBeInstanceOf(BotOffError);
     await expect(app.transport.sendText('c1', 'Sir, ...', { kind: 'greeting' })).rejects.toBeInstanceOf(BotOffError);
-    await expect(app.transport.forwardMessage('c1', 1, 'c2')).rejects.toBeInstanceOf(BotOffError);
-    await app.transport.sendTyping('c1');
     expect(transport.sent).toHaveLength(0);
-    expect(transport.typing).toBe(0);
     // Team chats are reachable (nothing uses them yet), so a future workflow can file tickets/exports.
     await app.transport.sendText(SUPPORT, 'ticket');
     expect(transport.sent).toMatchObject([{ chatId: SUPPORT, text: 'ticket' }]);

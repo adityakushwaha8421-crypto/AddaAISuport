@@ -1,7 +1,7 @@
 import bigInt from 'big-integer';
 import { Api } from 'telegram';
 import { describe, expect, it } from 'vitest';
-import { buildInbound, exportForwardOf, mediaFromUserMessage, parseAllowedUsers, screenSender } from '../../src/telegram/user/userTransport.js';
+import { buildInbound, mediaFromUserMessage, parseAllowedUsers, screenSender } from '../../src/telegram/user/userTransport.js';
 
 const SELF = '777';
 const CHAT = '42';
@@ -88,25 +88,5 @@ describe('who the AI may answer (personal account)', () => {
     expect(screenSender(user({ id: bigInt(9), username: 'Other' }), { allowed, ignoreContacts: true }).ok).toBe(true);
     expect(screenSender(user({ id: bigInt(9), username: 'stranger' }), { allowed, ignoreContacts: true })).toMatchObject({ ok: false });
     expect(parseAllowedUsers('')).toBeUndefined();
-  });
-});
-
-describe('forwards the account makes into the export bot chat', () => {
-  const fwd = (over: Partial<ConstructorParameters<typeof Api.MessageFwdHeader>[0]>) => new Api.MessageFwdHeader({ date: 1_788_000_000, ...over });
-
-  it('names the customer a forward came from, and what it is', () => {
-    const from = fwd({ fromId: new Api.PeerUser({ userId: bigInt(8939686943) }) });
-    expect(exportForwardOf(msg({ id: 31, out: true, fwdFrom: from, media: photo(555) }))).toMatchObject({ messageId: 31, fromUserId: '8939686943', kind: 'photo', fileUniqueId: 'photo:555' });
-    expect(exportForwardOf(msg({ id: 32, out: true, fwdFrom: from, message: '9810822372' }))).toMatchObject({ kind: 'text', text: '9810822372', fromUserId: '8939686943' });
-    const pdf = document('application/pdf', [new Api.DocumentAttributeFilename({ fileName: 'statement.pdf' })]);
-    expect(exportForwardOf(msg({ id: 33, out: true, fwdFrom: from, media: pdf }))).toMatchObject({ kind: 'document', mimeType: 'application/pdf', fileName: 'statement.pdf', fileUniqueId: 'doc:77' });
-    const video = document('video/mp4', [new Api.DocumentAttributeVideo({ duration: 11, w: 720, h: 1280 })]);
-    expect(exportForwardOf(msg({ id: 34, out: true, fwdFrom: from, media: video }))).toMatchObject({ kind: 'video' });
-  });
-
-  it('a customer who hides their account leaves only a name; the file id still identifies the file', () => {
-    const e = exportForwardOf(msg({ id: 35, out: true, fwdFrom: fwd({ fromName: 'Hidden User' }), media: photo(556) }));
-    expect(e.fromUserId).toBeUndefined();
-    expect(e).toMatchObject({ fromName: 'Hidden User', fileUniqueId: 'photo:556' });
   });
 });

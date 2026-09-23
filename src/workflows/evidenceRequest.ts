@@ -10,7 +10,7 @@ import type { Store } from '../storage/types.js';
 import type { ReadStateApi, Transport } from '../telegram/transport.js';
 
 /** A human's chat stays theirs until they hand it back with the resume command. */
-export const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
+const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
 
 export type RequestOutcome =
   | 'requested'

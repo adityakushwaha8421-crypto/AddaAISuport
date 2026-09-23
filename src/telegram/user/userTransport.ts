@@ -4,8 +4,7 @@ import { NewMessage, Raw, type NewMessageEvent } from 'telegram/events/index.js'
 import { LogLevel } from 'telegram/extensions/Logger.js';
 import type { Logger } from 'pino';
 import type { InboundMessage, MediaKind, MediaRef, ReplySnapshot } from '../../domain/messages.js';
-import { MediaTooLargeError, TELEGRAM_TEXT_LIMIT, type ChatFolderApi, type ReadStateApi, type SendOptions, type ExportForwardEvent, type Transport, type TransportHandlers } from '../transport.js';
-import { findFolder, folderHas, folderList, folderWithChat, folderWithoutChat, peerChatId } from './folders.js';
+import { TELEGRAM_TEXT_LIMIT, type ReadStateApi, type SendOptions, type Transport, type TransportHandlers } from '../transport.js';
 import { KeyedBuckets, TokenBucket } from '../../util/rateLimiter.js';
 import { ReadTracker } from './readState.js';
 import type { SessionStore } from './sessionStore.js';
@@ -14,7 +13,6 @@ export class SessionMissingError extends Error {}
 export class SessionRevokedError extends Error {}
 
 const REVOKED_ERRORS = /AUTH_KEY_UNREGISTERED|SESSION_REVOKED|SESSION_EXPIRED|USER_DEACTIVATED|AUTH_KEY_DUPLICATED/;
-const MAX_DOWNLOAD = 50 * 1024 * 1024;
 /** Telegram's own service account (login codes, security notices). Never auto-reply to it. */
 const TELEGRAM_SERVICE_ID = '777000';
 
@@ -95,20 +93,6 @@ export function mediaFromUserMessage(m: GMessage, chatId: string): MediaRef[] {
   return [{ kind, fileRef, fileUniqueId: `doc:${doc.id.toString()}`, mimeType: doc.mimeType, fileName, fileSize: Number(doc.size), durationSec }];
 }
 
-/** A forward the account made into the export bot's chat, in transport-agnostic terms. Pure. */
-export function exportForwardOf(m: GMessage): ExportForwardEvent {
-  const from = m.fwdFrom?.fromId;
-  const [media] = mediaFromUserMessage(m, 'export');
-  const kind: ExportForwardEvent['kind'] = !media ? (m.message ? 'text' : 'other')
-    : media.kind === 'photo' ? 'photo' : media.kind === 'video' || media.kind === 'video_note' ? 'video' : media.kind === 'document' ? 'document' : 'other';
-  return {
-    messageId: m.id,
-    fromUserId: from instanceof Api.PeerUser ? from.userId.toString() : undefined,
-    fromName: m.fwdFrom?.fromName ?? undefined,
-    kind, text: m.message || undefined, mimeType: media?.mimeType, fileName: media?.fileName, fileUniqueId: media?.fileUniqueId,
-  };
-}
-
 /**
  * Map an incoming MTProto message (plus the message it swipe-replies to, when Telegram returned
  * it) to the transport-agnostic model. Pure, so reply/media mapping is unit-testable.
@@ -147,16 +131,13 @@ export function buildInbound(m: GMessage, chatId: string, sender: Api.User, repl
  * Telegram account (MTProto) transport. Isolated behind `Transport` so the account/session
  * mechanism can be replaced without touching the rest of the system.
  */
-export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
+export class UserTransport implements Transport, ReadStateApi {
   private client?: TelegramClient;
   private selfId = '';
   /** Support chat as Telegram reports it on incoming messages ("marked" id, e.g. -5207771735). */
   private supportMarkedId?: string;
   private supportPeer?: Api.TypeInputPeer;
   private exportPeer?: Api.TypeInputPeer;
-  /** Forwards this process made into the export bot's chat (the exporter's), so a human's can be told apart. */
-  private readonly forwardedByUs = new Set<number>();
-  private readonly forwardsInFlight = new Set<Promise<unknown>>();
   private running = false;
   private authTimer?: NodeJS.Timeout;
   /** Message ids we sent programmatically, per chat — to tell bot messages from a human's. */
@@ -313,17 +294,8 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
       return;
     }
     if (this.opts.exportChatId && chatId === this.opts.exportChatId) {
-      // What comes back is the bot's confirmation.
+      // What comes back is the bot's confirmation; what the account sends there is nobody's business here.
       if (!m.out && handlers.onExportMessage) await handlers.onExportMessage({ messageId: m.id, text: m.message, replyToMessageId: m.replyToMsgId });
-      // What goes out is either the bot's own export (tracked by the exporter) or a HUMAN forwarding a
-      // customer's evidence by hand. The second kind must be reported, or the customer is never told.
-      if (m.out && m.fwdFrom && handlers.onExportForward) {
-        const flying = [...this.forwardsInFlight];
-        if (flying.length) await Promise.race([Promise.allSettled(flying), new Promise((r) => setTimeout(r, 15_000))]);
-        else await new Promise((r) => setTimeout(r, 1500));
-        if (this.forwardedByUs.has(m.id)) return;
-        await handlers.onExportForward(exportForwardOf(m));
-      }
       return;
     }
     if (!ev.isPrivate) return;
@@ -425,75 +397,6 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
     }
   }
 
-  async forwardMessage(fromChatId: string, messageId: number, toChatId: string) {
-    const client = this.requireClient();
-    // A real Telegram forward, author kept: the export bot and the team see which customer the
-    // file came from. (Never dropAuthor: that would turn it into an anonymous copy.)
-    const toExport = !!this.opts.exportChatId && toChatId === this.opts.exportChatId;
-    const call = this.throttled(toChatId, () => this.withEntityRetry(() =>
-      client.forwardMessages(this.peer(toChatId), { messages: [messageId], fromPeer: this.peer(fromChatId), dropAuthor: false }),
-    ));
-    if (toExport) {
-      this.forwardsInFlight.add(call);
-      void call.finally(() => this.forwardsInFlight.delete(call)).catch(() => undefined);
-    }
-    const res = await call;
-    const remember = (id: number) => {
-      if (!toExport) return;
-      this.forwardedByUs.add(id);
-      if (this.forwardedByUs.size > 5000) this.forwardedByUs.delete(this.forwardedByUs.values().next().value as number);
-    };
-    // GramJS returns one array per chunk (an array of arrays), with holes when it could not map a
-    // result back to a message.
-    const first = (res ?? []).flat().find((m): m is Api.Message => m instanceof Api.Message);
-    if (first?.id) {
-      remember(first.id);
-      return { messageId: first.id };
-    }
-    // Telegram did the forward but GramJS lost the id: the newest message in the chat is it if it
-    // is ours, a forward, and seconds old. Otherwise report failure (the caller may retry).
-    const [latest] = await client.getMessages(this.peer(toChatId), { limit: 1 });
-    if (latest instanceof Api.Message && latest.out && latest.fwdFrom && Date.now() / 1000 - latest.date < 30) {
-      remember(latest.id);
-      return { messageId: latest.id };
-    }
-    this.opts.log.warn({ from: fromChatId, messageId, to: toChatId }, 'forward result could not be mapped to a message id');
-    return undefined;
-  }
-
-  async messagesExist(chatId: string, messageIds: number[]): Promise<number[]> {
-    if (!messageIds.length) return [];
-    const client = this.requireClient();
-    const msgs = await this.withEntityRetry(() => client.getMessages(this.peer(chatId), { ids: messageIds }));
-    // Telegram returns an empty slot for an id that does not exist in the chat.
-    return msgs.filter((m): m is Api.Message => m instanceof Api.Message).map((m) => m.id);
-  }
-
-  async recentOutgoing(chatId: string, limit: number): Promise<number[]> {
-    const client = this.requireClient();
-    const msgs = await this.withEntityRetry(() => client.getMessages(this.peer(chatId), { limit }));
-    return msgs.filter((m): m is Api.Message => m instanceof Api.Message && !!m.out).map((m) => m.id);
-  }
-
-  async downloadMedia(ref: MediaRef): Promise<Buffer> {
-    if (ref.fileSize && ref.fileSize > MAX_DOWNLOAD) throw new MediaTooLargeError('File too large');
-    const [chatId, msgId] = ref.fileRef.split(':');
-    if (!chatId || !msgId) throw new Error('Malformed user-transport file reference');
-    const client = this.requireClient();
-    const [msg] = await this.withEntityRetry(() => client.getMessages(this.peer(chatId), { ids: [Number(msgId)] }));
-    if (!msg) throw new Error('Message with media no longer exists');
-    const data = await client.downloadMedia(msg, {});
-    if (!data || typeof data === 'string') throw new Error('Media download returned no data');
-    return data;
-  }
-
-  async sendTyping(chatId: string): Promise<void> {
-    const client = this.requireClient();
-    await client
-      .invoke(new Api.messages.SetTyping({ peer: this.peer(chatId), action: new Api.SendMessageTypingAction() }))
-      .catch(() => undefined);
-  }
-
   async deleteMessage(chatId: string, messageId: number): Promise<void> {
     const client = this.requireClient();
     await client.deleteMessages(this.peer(chatId), [messageId], { revoke: true });
@@ -508,36 +411,5 @@ export class UserTransport implements Transport, ChatFolderApi, ReadStateApi {
     const res = await client.invoke(new Api.messages.GetPeerDialogs({ peers: [new Api.InputDialogPeer({ peer })] }));
     const dialog = res.dialogs.find((d): d is Api.Dialog => d instanceof Api.Dialog);
     return !!dialog && dialog.readInboxMaxId >= messageId;
-  }
-
-  // ── Chat folders ───────────────────────────────────────────────────────────
-
-  private async readFolders(): Promise<Api.TypeDialogFilter[]> {
-    return folderList(await this.requireClient().invoke(new Api.messages.GetDialogFilters()));
-  }
-
-  async folderChats(title: string): Promise<string[]> {
-    const folder = findFolder(await this.readFolders(), title);
-    if (!folder) return [];
-    return [...folder.pinnedPeers, ...folder.includePeers].map(peerChatId).filter((id): id is string => !!id);
-  }
-
-  async addChatToFolder(title: string, chatId: string): Promise<void> {
-    const client = this.requireClient();
-    const filters = await this.readFolders();
-    const folder = findFolder(filters, title);
-    if (folder && folderHas(folder, chatId)) return;
-    const peer = await this.withEntityRetry(() => client.getInputEntity(this.peer(chatId)));
-    const next = folderWithChat(folder, filters, title, peer);
-    await client.invoke(new Api.messages.UpdateDialogFilter({ id: next.id, filter: next }));
-  }
-
-  async removeChatFromFolder(title: string, chatId: string): Promise<void> {
-    const client = this.requireClient();
-    const folder = findFolder(await this.readFolders(), title);
-    if (!folder || !folderHas(folder, chatId)) return;
-    const next = folderWithoutChat(folder, chatId);
-    // No filter = delete: Telegram does not allow a folder with no chats in it.
-    await client.invoke(new Api.messages.UpdateDialogFilter(next ? { id: folder.id, filter: next } : { id: folder.id }));
   }
 }

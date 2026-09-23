@@ -1,12 +1,5 @@
 import type { MediaRef } from '../domain/messages.js';
 
-export class ConflictError extends Error {
-  constructor(message = 'Concurrent modification') {
-    super(message);
-    this.name = 'ConflictError';
-  }
-}
-
 // ── Users ──────────────────────────────────────────────────────────────────
 
 export interface UserRecord {
@@ -68,8 +61,6 @@ export interface MessageMeta {
   html?: boolean;
   /** Inbound: what happened to it (e.g. `requested`, `already_requested`, `bot_off`). Outbound: what it is (`evidence_request`, `payment_confirmed`). */
   kind?: string;
-  /** @deprecated use kind */
-  ignored?: string;
 }
 
 export interface StoredMessage {

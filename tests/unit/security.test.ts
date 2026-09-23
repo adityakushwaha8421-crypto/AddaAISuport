@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadEnv, looksLikeSessionString, secretValues } from '../../src/config/env.js';
 import { decryptSecret, encryptSecret } from '../../src/security/crypto.js';
-import { maskAccount, maskName, maskPhone, shortMaskAccount } from '../../src/security/masking.js';
 import { BootstrapSessionStore, EncryptedFileSessionStore, MemorySessionStore, sessionStoreFromEnv, StringSessionStore } from '../../src/telegram/user/sessionStore.js';
 
 describe('secrets at rest', () => {
@@ -78,15 +77,6 @@ describe('session bootstrap', () => {
   });
 });
 
-describe('masking', () => {
-  it('masks accounts, phones and names', () => {
-    expect(maskAccount('50100123456789')).toBe('XXXXXXXXXX6789');
-    expect(shortMaskAccount('50100123456789')).toBe('XXXX6789');
-    expect(shortMaskAccount('XXXXXX6789')).toBe('XXXX6789');
-    expect(maskPhone('9810822372')).toBe('98XXXXXX72');
-    expect(maskName('Rahul Kumar')).toBe('R***l K***r');
-  });
-});
 
 describe('environment', () => {
   const account = { NODE_ENV: 'production', STORE: 'memory', TELEGRAM_API_ID: '12345', TELEGRAM_API_HASH: 'deadbeefcafebabe', SESSION_ENCRYPTION_KEY: 'k'.repeat(32) };

@@ -40,7 +40,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
   // The model is used for one thing: telling deposit from withdrawal when the lexical scorer cannot.
   const llm: LlmClient = env.OPENAI_API_KEY
     ? new OpenAiLlm({
-        apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL, model: env.OPENAI_MODEL, visionModel: env.OPENAI_VISION_MODEL,
+        apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL, model: env.OPENAI_MODEL,
         reasoningEffort: env.OPENAI_REASONING_EFFORT, timeoutMs: env.OPENAI_TIMEOUT_MS, log: log.child({ mod: 'llm' }), metrics,
         maxConcurrency: env.OPENAI_MAX_CONCURRENCY,
       })
@@ -77,7 +77,6 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     onSupportMessage: (m) => app.onSupportMessage(m),
     onOwnOutgoing: (e) => app.onOwnOutgoing(e),
     onExportMessage: (m) => app.onExportMessage(m),
-    onExportForward: (e) => app.onExportForward(e),
     onAdminCommand: (e) => app.onAdminCommand(e),
   });
   log.info(
