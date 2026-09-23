@@ -24,7 +24,9 @@ const envSchema = z.object({
   TELEGRAM_API_ID: z.coerce.number().int().optional(),
   TELEGRAM_API_HASH: optionalString,
   TELEGRAM_PHONE: optionalString,
-  TELEGRAM_SESSION_FILE: z.string().default('secrets/telegram.session.enc'),
+  TELEGRAM_SESSION_FILE: z.string().trim().min(1).default('secrets/telegram.session.enc'),
+  /** PID lock so only one copy of the agent runs on this account. */
+  INSTANCE_LOCK_FILE: z.string().trim().min(1).default('secrets/agent.lock'),
   /** Optional existing string session (GramJS/Telethon). Imported into the encrypted session file on first start. */
   /** The account's session string (from `npm run telegram:session`). When set, it is used as is and no session file or encryption key is needed. */
   TELEGRAM_SESSION: optionalString,
@@ -148,6 +150,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, require: EnvReq
   if (env.NODE_ENV !== 'test') {
     if (require.includes('telegram') && env.ROLE !== 'worker') {
       if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) problems.push('TELEGRAM_API_ID and TELEGRAM_API_HASH are required (https://my.telegram.org)');
+      // A path setting that holds a secret would end up as directory names on disk: refuse it outright.
+      for (const key of ['TELEGRAM_SESSION_FILE', 'INSTANCE_LOCK_FILE'] as const) {
+        const v = env[key];
+        if (looksLikeSessionString(v) || v.length > 200 || /\s/.test(v)) problems.push(`${key} must be a file path such as secrets/telegram.session.enc (the session string belongs in TELEGRAM_SESSION)`);
+      }
       if (env.TELEGRAM_SESSION && !looksLikeSessionString(env.TELEGRAM_SESSION)) {
         problems.push('TELEGRAM_SESSION does not look like a Telegram session string (run `npm run telegram:session` to create one)');
       }

@@ -210,7 +210,7 @@ async function main() {
   const rootLog = createLogger({ level: first.LOG_LEVEL, pretty: first.LOG_PRETTY, file: first.LOG_FILE });
   // The gateway owns the account's one Telegram session: never two copies on the same account.
   // Taken once per process; an in-process /restart keeps it.
-  if (first.ROLE !== 'worker') acquireInstanceLock(`${first.TELEGRAM_SESSION_FILE}.lock`);
+  if (first.ROLE !== 'worker') acquireInstanceLock(first.INSTANCE_LOCK_FILE);
 
   const supervisor = new Supervisor({
     boot: (ctx) => boot(ctx, rootLog),

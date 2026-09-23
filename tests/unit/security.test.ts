@@ -63,6 +63,13 @@ describe('session bootstrap', () => {
     expect(() => loadEnv(base)).toThrow(/TELEGRAM_SESSION.*or SESSION_ENCRYPTION_KEY/);
   });
 
+  it('refuses a session string pasted into a path setting (it would become directory names on disk)', () => {
+    const base = { NODE_ENV: 'production', STORE: 'memory', TELEGRAM_API_ID: '1', TELEGRAM_API_HASH: 'x'.repeat(32), TELEGRAM_SESSION: fakeSession };
+    expect(() => loadEnv({ ...base, TELEGRAM_SESSION_FILE: fakeSession })).toThrow(/TELEGRAM_SESSION_FILE must be a file path/);
+    expect(() => loadEnv({ ...base, INSTANCE_LOCK_FILE: 'a'.repeat(300) })).toThrow(/INSTANCE_LOCK_FILE must be a file path/);
+    expect(loadEnv({ ...base, TELEGRAM_SESSION_FILE: 'secrets/telegram.session.enc' }).INSTANCE_LOCK_FILE).toBe('secrets/agent.lock');
+  });
+
   it('rejects a session string pasted into SESSION_ENCRYPTION_KEY, with a fix-it message', () => {
     expect(looksLikeSessionString(fakeSession)).toBe(true);
     expect(looksLikeSessionString('0123456789abcdef'.repeat(4))).toBe(false);
