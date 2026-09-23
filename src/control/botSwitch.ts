@@ -38,6 +38,22 @@ export class BotSwitch {
     }
   }
 
+  /**
+   * The state right now, read from the store (not the cache): for the last check before an action
+   * that must never happen while OFF (a send, a forward). A store that cannot be read falls back to
+   * the cached state so a blip never silences or un-silences the agent on its own.
+   */
+  async isOnNow(): Promise<boolean> {
+    try {
+      const on = await this.current();
+      this.cache = { on, at: this.now() };
+      return on;
+    } catch (err) {
+      this.o.log.warn({ err }, 'could not read the bot switch; keeping the last known state');
+      return this.cache?.on ?? true;
+    }
+  }
+
   async set(on: boolean): Promise<void> {
     await this.o.settings.set(KEY, on);
     this.cache = { on, at: this.now() };

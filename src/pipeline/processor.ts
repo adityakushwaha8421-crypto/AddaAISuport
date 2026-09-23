@@ -61,7 +61,8 @@ export interface ProcessorDeps {
   /** Forwards each case's requested items to the export bot once they are all in. */
   exporter?: EvidenceExporter;
   /** The agent's ON/OFF switch (/boton, /botoff): OFF means no reply, no request, nothing. */
-  botSwitch?: { isOn(): Promise<boolean> };
+  /** The ON/OFF switch; `isOnNow` reads the shared store fresh (the last check before a reply). */
+  botSwitch?: { isOn(): Promise<boolean>; isOnNow(): Promise<boolean> };
   log: Logger;
   metrics?: Metrics;
   clock?: () => Date;
@@ -170,9 +171,11 @@ export class TurnProcessor {
     let tlog = (ctx.log ?? this.deps.log).child({ turn: turn.id, chat: chatId, user: user.id, messages: raw.map((m) => m.messageId), ...(ctx.jobId ? { job: ctx.jobId } : {}) });
     const trace: Record<string, unknown> = { messages: raw.length };
     let filed = false; // the chat folders already reflect this turn
+    let requestedNow = false; // this turn is a case's one evidence request (request-only mode)
 
-    // Switched OFF by an admin: nothing is done now; the turn waits in the queue for /boton.
-    if (this.deps.botSwitch && !(await this.deps.botSwitch.isOn())) {
+    // Switched OFF by an admin: nothing is done now — not read, not interpreted, not answered; the
+    // turn waits in the queue for /boton. Read fresh from the store: every process sees the same state.
+    if (this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow())) {
       await store.turns.update(turn.id, { status: 'skipped', trace: scrubber.scrubDeep({ ...trace, reason: 'bot_off_deferred' }), completedAt: new Date() });
       tlog.info('bot is OFF: turn deferred until it is switched on');
       throw new DeferJobError('bot is off');
@@ -306,6 +309,7 @@ export class TurnProcessor {
             out.acts = [request];
             c.facts.requestSentAt = now.toISOString();
             c = await store.cases.save(c);
+            requestedNow = true;
           } else {
             trace.requestOnly = 'nothing_to_request';
             out.acts = [];
@@ -323,14 +327,16 @@ export class TurnProcessor {
       if (lang !== user.preferredLanguage) await store.users.setPreferredLanguage(user.id, lang);
 
       trace.acts = out.acts.map((a) => a.type);
-      // Last look before sending: a human who read the message meanwhile answers it, not the bot.
+      // Last looks before composing: a human who read the message meanwhile answers it, not the bot;
+      // and an admin who switched the bot OFF meanwhile wants nothing sent, not even a prepared reply.
       const readMeanwhile = out.acts.length > 0 && (await this.seenByHuman(chatId, latestId, tlog));
       if (readMeanwhile) {
         trace.reason = 'seen_by_human';
         tlog.info({ intent: interp.intent }, 'reply dropped: a human read the message while it was being prepared');
       }
+      let switchedOff = out.acts.length > 0 && !readMeanwhile && !!this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow());
       let text: string | undefined;
-      if (out.acts.length && !readMeanwhile) {
+      if (out.acts.length && !readMeanwhile && !switchedOff) {
         const composed = await this.deps.composer.compose({
           acts: out.acts, language: lang, userText: signals.text, history: toHistory(history),
           address: addressTerm(user.memory), brief: prefersBrief(user.memory),
@@ -355,15 +361,32 @@ export class TurnProcessor {
           const meta: MessageMeta = { kind: 'reply', html: true, caseId: c?.id, caseType: c?.type, acts: out.acts.map((a) => a.type), candidates: out.meta?.candidates, refs: out.meta?.refs };
           const threaded = raw.length > 1 || !!replyMsg;
           // Keyed by the messages, not the turn row: a turn re-run after a crash can never reply twice.
+          // The transport reads the switch once more right before the send: OFF cancels the reply for good.
           const sent = await this.deps.outbox.send({ key: `turn:${chatId}:${latestId}`, chatId, userId: user.id, text, replyToMessageId: threaded ? last.messageId : undefined, meta });
           trace.delivered = sent.sent;
+          if (sent.cancelled) {
+            switchedOff = true;
+            text = undefined;
+          }
+        }
+      }
+      if (switchedOff) {
+        trace.reason = 'bot_off';
+        tlog.info({ intent: interp.intent, acts: trace.acts }, 'reply cancelled: the bot was switched OFF while the message was being handled');
+        // The case's one evidence request never reached the customer: it is still owed, in full, the
+        // next time they write while the bot is ON — so the case forgets it ever asked.
+        if (requestedNow && c) {
+          delete c.facts.requestSentAt;
+          c.facts.asks = {};
+          c.facts.lastAsked = [];
+          c = await store.cases.save(c);
         }
       }
 
       if (JSON.stringify(user.memory) !== memoryBefore) await store.users.saveMemory(user.id, user.memory);
       await store.messages.markProcessed(chatId, raw.map((m) => m.messageId), { turnId: turn.id, caseId: c?.id });
-      const outcome = text ? 'responded' : readMeanwhile ? 'seen_by_human' : 'no_reply';
-      await store.turns.update(turn.id, { status: readMeanwhile ? 'skipped' : text ? 'responded' : 'no_reply', caseId: c?.id, trace: scrubber.scrubDeep(trace), completedAt: new Date() });
+      const outcome = text ? 'responded' : readMeanwhile ? 'seen_by_human' : switchedOff ? 'bot_off' : 'no_reply';
+      await store.turns.update(turn.id, { status: readMeanwhile || switchedOff ? 'skipped' : text ? 'responded' : 'no_reply', caseId: c?.id, trace: scrubber.scrubDeep(trace), completedAt: new Date() });
       metrics?.turns.inc({ outcome, intent: interp.intent, interpreter: interp.source });
       // Operational breadcrumb (no message content).
       tlog.info(

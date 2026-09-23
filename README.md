@@ -84,7 +84,7 @@ message and do nothing.
 
 | Command | Effect | Reply |
 |---|---|---|
-| `/botoff` | Agent OFF, saved permanently (store `settings`, shared by every process). **Everything automatic stops**: replies, evidence requests, greetings, folder filing, exports, confirmations, background retries. Messages are still received and stored, and the work waits in the queue. | `⛔ Bot is OFF` |
+| `/botoff` | Agent OFF, saved permanently (store `settings`, shared by every process). **Everything automatic stops**: replies, evidence requests, greetings, folder filing, exports, confirmations, background retries. The state is checked before a message is read, before the AI is called and again right before every send or forward, so a reply that was being prepared when the command arrived is cancelled; unsent replies from before are withdrawn and never sent later. Messages are still received and stored, and the work waits in the queue. | `⛔ Bot is OFF` |
 | `/boton` | Agent ON again, saved permanently; the work that arrived while OFF is picked up. | `✅ Bot is ON` |
 | `/restart` | Safe in-process restart: in-flight jobs finish, Telegram disconnects and reconnects, `.env` and every config file are reloaded, the ON/OFF state is preserved. | `✅ Bot restarted successfully.` (only after the new instance is up) |
 

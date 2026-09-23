@@ -3,6 +3,7 @@ import { ResilientAdminGateway } from './admin/resilient.js';
 import { CaseService } from './cases/service.js';
 import { AdminCommands, type AdminCommandEvent } from './control/adminCommands.js';
 import { BotSwitch } from './control/botSwitch.js';
+import { guardTransport } from './control/guardedTransport.js';
 import type { AdminGateway } from './domain/admin.js';
 import { messageBody, type InboundMessage } from './domain/messages.js';
 import { EvidenceService } from './evidence/service.js';
@@ -147,6 +148,11 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   const now = () => c.clock?.() ?? new Date();
   const queue = c.queue ?? new MemoryQueue(now);
   const admin = new ResilientAdminGateway(c.admin, { ...cfg.admin, log: c.log, metrics: c.metrics });
+  // The ON/OFF switch lives in the shared store, so every process reads the same state. Everything
+  // automatic sends through `transport`, which re-reads the switch right before each send or forward
+  // and refuses while OFF; only the admin replies (/boton, /botoff, /restart) bypass it.
+  const botSwitch = c.botSwitch ?? new BotSwitch({ settings: c.store.settings, log: c.log, clock: c.clock });
+  const transport = guardTransport(c.transport, botSwitch, c.log.child({ mod: 'bot-switch' }));
   const evidence = new EvidenceService({
     store: c.store,
     download: (ref) => c.transport.downloadMedia(ref),
@@ -156,10 +162,10 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     log: c.log,
     metrics: c.metrics,
   });
-  const outbox = new OutboxSender({ store: c.store, transport: c.transport, log: c.log, metrics: c.metrics, maxAttempts: 5 });
+  const outbox = new OutboxSender({ store: c.store, transport, log: c.log, metrics: c.metrics, maxAttempts: 5 });
   const handoff = new HandoffService({
     store: c.store,
-    transport: c.transport,
+    transport,
     supportChatId: cfg.supportChatId,
     log: c.log,
     metrics: c.metrics,
@@ -173,16 +179,15 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
           })
       : undefined,
   });
-  const botSwitch = c.botSwitch ?? new BotSwitch({ settings: c.store.settings, log: c.log, clock: c.clock });
-  const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart });
-  const exporter = cfg.exportChatId ? new EvidenceExporter({ store: c.store, transport: c.transport, exportChatId: cfg.exportChatId, log: c.log, metrics: c.metrics, clock: c.clock }) : undefined;
+  const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, outbox, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart });
+  const exporter = cfg.exportChatId ? new EvidenceExporter({ store: c.store, transport, exportChatId: cfg.exportChatId, log: c.log, metrics: c.metrics, clock: c.clock }) : undefined;
   const composer = new ResponseComposer({ llm: c.llm, mode: cfg.responseMode, style: c.style, log: c.log, metrics: c.metrics });
   const chatFolders = c.chatFolders ?? (c.folders && cfg.chatFolders
     ? new ChatFolders({ folders: c.folders, titles: cfg.chatFolders, log: c.log, metrics: c.metrics, clock: c.clock })
     : undefined);
   const processor = new TurnProcessor({
     store: c.store,
-    transport: c.transport,
+    transport,
     evidence,
     interpreter: c.interpreter ?? new LlmInterpreter(c.llm, c.log),
     cases: new CaseService(c.store),
@@ -209,14 +214,14 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   });
   const confirmations = new ExportConfirmations({ store: c.store, outbox, composer, locks, log: c.log, notifyCustomer: cfg.caseReplies === 'conversational' });
   const manualExports = cfg.exportChatId
-    ? new ManualExports({ store: c.store, outbox, transport: c.transport, exportChatId: cfg.exportChatId, locks, log: c.log, metrics: c.metrics, clock: c.clock })
+    ? new ManualExports({ store: c.store, outbox, transport, exportChatId: cfg.exportChatId, locks, log: c.log, metrics: c.metrics, clock: c.clock })
     : undefined;
-  const relay = new SupportRelay({ store: c.store, outbox, transport: c.transport, takeoverMinutes: cfg.takeoverMinutes, resumeCommand: cfg.resumeCommand, log: c.log, clock: c.clock, folders: chatFolders, locks });
+  const relay = new SupportRelay({ store: c.store, outbox, transport, takeoverMinutes: cfg.takeoverMinutes, resumeCommand: cfg.resumeCommand, log: c.log, clock: c.clock, folders: chatFolders, locks });
 
   // Job handlers: every one of them is safe to run twice (a worker may die mid-job).
   const runner = new JobRunner({
     queue,
-    gate: () => botSwitch.isOn(), // OFF: every job waits; ON: the backlog runs
+    gate: () => botSwitch.isOnNow(), // OFF: nothing is claimed, every job waits; ON: the backlog runs
     log: c.log,
     metrics: c.metrics,
     concurrency: cfg.maxConcurrentTurns,

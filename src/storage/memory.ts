@@ -272,8 +272,21 @@ class MemoryOutbox implements OutboxRepo {
     const r = this.rows.get(id);
     if (r) Object.assign(r, { status: 'failed', lastError: error, attempts: r.attempts + 1 });
   }
+  async markCancelled(id: string, reason: string) {
+    const r = this.rows.get(id);
+    if (r) Object.assign(r, { status: 'cancelled', lastError: reason });
+  }
+  async cancelPending(reason: string) {
+    let n = 0;
+    for (const r of this.rows.values()) {
+      if (r.status === 'sent' || r.status === 'cancelled') continue;
+      Object.assign(r, { status: 'cancelled', lastError: reason });
+      n++;
+    }
+    return n;
+  }
   async listPending(maxAttempts: number) {
-    return clone([...this.rows.values()].filter((r) => r.status !== 'sent' && r.attempts < maxAttempts));
+    return clone([...this.rows.values()].filter((r) => r.status !== 'sent' && r.status !== 'cancelled' && r.attempts < maxAttempts));
   }
   async getByKey(key: string) {
     const r = [...this.rows.values()].find((x) => x.key === key);

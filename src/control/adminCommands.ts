@@ -39,6 +39,9 @@ export class AdminCommands {
     private readonly o: {
       admins: Iterable<string>;
       botSwitch: BotSwitch;
+      /** Replies still waiting to be sent are withdrawn on /botoff. */
+      outbox?: { cancelPending(reason?: string): Promise<number> };
+      /** The raw transport: these replies must go out precisely while the bot is OFF. */
       transport: Pick<Transport, 'sendText'>;
       log: Logger;
       /** Provided by the supervisor: perform a safe restart, then send the success reply to `chatId`. */
@@ -70,6 +73,8 @@ export class AdminCommands {
         break;
       case 'botoff':
         await this.o.botSwitch.set(false);
+        // Nothing prepared before this moment may go out later: unsent replies are withdrawn, not paused.
+        await this.o.outbox?.cancelPending('bot_off').catch((err) => log.warn({ err }, 'could not withdraw the unsent replies'));
         await this.reply(ev.chatId, REPLIES.off);
         break;
       case 'restart':

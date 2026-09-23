@@ -586,9 +586,16 @@ class PgOutbox implements OutboxRepo {
       [entryId, error.slice(0, 1000)],
     );
   }
+  async markCancelled(entryId: string, reason: string) {
+    await this.db.query(`UPDATE outbox SET status = 'cancelled', last_error = $2 WHERE id = $1`, [entryId, reason.slice(0, 1000)]);
+  }
+  async cancelPending(reason: string) {
+    const r = await this.db.query(`UPDATE outbox SET status = 'cancelled', last_error = $1 WHERE status NOT IN ('sent', 'cancelled')`, [reason.slice(0, 1000)]);
+    return r.rowCount ?? 0;
+  }
   async listPending(maxAttempts: number) {
     const { rows } = await this.db.query(
-      `SELECT * FROM outbox WHERE status <> 'sent' AND attempts < $1 ORDER BY created_at`,
+      `SELECT * FROM outbox WHERE status NOT IN ('sent', 'cancelled') AND attempts < $1 ORDER BY created_at`,
       [maxAttempts],
     );
     return rows.map(toOutbox);

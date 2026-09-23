@@ -252,7 +252,22 @@ so every worker sees it and it survives restarts. OFF pauses everything automati
 stops claiming (a job caught mid-flight is released back untouched via `DeferJobError`, its attempt
 not counted) and the maintenance worker skips its ticks, so replies, requests, greetings, folder
 filing, exports, confirmations and retries all wait; messages are still received, stored and
-queued. ON lets the backlog run. `/restart` goes to the process supervisor (`control/supervisor.ts`): the running
+queued. ON lets the backlog run.
+
+The switch is checked at every stage, each time fresh from the store (`BotSwitch.isOnNow`), never
+from a process-local cache alone: before a job is claimed, at the start of a turn (before the
+message is interpreted), again before the reply is composed, and finally inside the transport
+itself. Every automatic sender — outbox, exporter, handoff, relay, typing indicator — goes through
+`control/guardedTransport.ts`, which re-reads the switch immediately before each `sendText` or
+`forwardMessage` and refuses with `BotOffError` while OFF; only the admin replies use the raw
+transport. A refused reply is marked `cancelled` in the outbox (a fourth status next to pending,
+sent, failed): the flush loop never retries it and a re-run of the same turn key finds it
+cancelled. `/botoff` also cancels every reply still pending in the outbox, so "ON" never releases
+a message prepared before "OFF". When a request-only case's one evidence request is cancelled this
+way, the case forgets it asked (`requestSentAt`, `asks`, `lastAsked` reset), so the request goes
+out in full the next time the customer writes while ON. `tests/conversations/botoff-silence.test.ts`
+covers the five-message check, the mid-turn race, the transport-level race, a stale second
+process and the withdrawn backlog. `/restart` goes to the process supervisor (`control/supervisor.ts`): the running
 agent is stopped cleanly (jobs drained, Telegram disconnected, store closed), `.env` is re-read,
 a fresh agent is booted in the same process under the same instance lock with the ON/OFF state
 carried over, and only then the admin is told "✅ Bot restarted successfully." Boot failures are

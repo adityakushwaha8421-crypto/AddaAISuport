@@ -23,7 +23,7 @@ export interface WorkerOptions {
   exportRetryAfterMs?: number;
   maxExportAttempts?: number;
   /** While OFF, every background duty waits. */
-  botSwitch?: { isOn(): Promise<boolean> };
+  botSwitch?: { isOn(): Promise<boolean>; isOnNow(): Promise<boolean> };
   /** Tell the customer when a delayed export lands (conversational mode); request-only mode stays silent. */
   notifyCustomer?: boolean;
 }
@@ -52,7 +52,7 @@ export class HandoffWorker {
 
   async tick(): Promise<void> {
     if (this.running) return;
-    if (this.o.botSwitch && !(await this.o.botSwitch.isOn())) return; // OFF: every background duty waits too
+    if (this.o.botSwitch && !(await this.o.botSwitch.isOnNow())) return; // OFF: every background duty waits too
     this.running = true;
     try {
       await this.retryTickets();

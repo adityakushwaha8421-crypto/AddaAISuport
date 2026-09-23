@@ -180,7 +180,8 @@ export interface TicketRepo {
 
 // ── Outbox ─────────────────────────────────────────────────────────────────
 
-export type OutboxStatus = 'pending' | 'sent' | 'failed';
+/** `cancelled`: the agent was switched OFF before the send; the message is never sent later. */
+export type OutboxStatus = 'pending' | 'sent' | 'failed' | 'cancelled';
 
 export interface OutboxEntry {
   id: string;
@@ -203,6 +204,11 @@ export interface OutboxRepo {
   enqueue(e: Pick<OutboxEntry, 'key' | 'chatId' | 'text' | 'meta'> & Partial<Pick<OutboxEntry, 'userId' | 'replyToMessageId'>>): Promise<{ entry: OutboxEntry; created: boolean }>;
   markSent(id: string, telegramMessageId: number): Promise<void>;
   markFailed(id: string, error: string): Promise<void>;
+  /** Withdraw a message for good (the agent was switched OFF): it is not pending, not failed, never retried. */
+  markCancelled(id: string, reason: string): Promise<void>;
+  /** Withdraw every unsent message at once (/botoff): returns how many. */
+  cancelPending(reason: string): Promise<number>;
+  /** Unsent messages still worth a retry (never sent or cancelled ones). */
   listPending(maxAttempts: number): Promise<OutboxEntry[]>;
   getByKey(key: string): Promise<OutboxEntry | undefined>;
 }
