@@ -106,7 +106,7 @@ describe('environment', () => {
   });
 
   it('lets CLI tools require only what they use', () => {
-    expect(() => loadEnv({ NODE_ENV: 'production', ADMIN_MODE: 'playwright' }, ['admin'])).toThrow(/ADMIN_BASE_URL/);
+    expect(() => loadEnv({ NODE_ENV: 'production', STORE: 'postgres' }, ['store'])).toThrow(/DATABASE_URL/);
     expect(loadEnv({ NODE_ENV: 'production' }, []).STORE).toBe('postgres');
   });
 });

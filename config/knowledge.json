@@ -1,4 +1,0 @@
-{
-  "$comment": "Business-approved answers for general (non-case) questions. The bot never invents policies: add only facts the business has approved. Each entry: id, keywords (any language), answer (Hinglish is fine; the LLM adapts the language). See config/knowledge.example.json for the format.",
-  "entries": []
-}

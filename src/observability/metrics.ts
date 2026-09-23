@@ -49,23 +49,11 @@ class Gauge {
 }
 
 export class Metrics {
-  readonly inboundMessages = new Counter('fa_inbound_messages_total', 'Inbound Telegram messages');
+  readonly inboundMessages = new Counter('fa_inbound_messages_total', 'Inbound Telegram messages received (by kind)');
   readonly duplicateMessages = new Counter('fa_duplicate_messages_total', 'Inbound messages dropped as duplicates');
-  readonly turns = new Counter('fa_turns_total', 'Processed turns by outcome');
-  readonly replies = new Counter('fa_replies_total', 'Replies sent');
+  readonly outbound = new Counter('fa_outbound_total', 'Outbound Telegram messages by kind and outcome');
   readonly llmCalls = new Counter('fa_llm_calls_total', 'LLM calls by purpose and outcome');
-  readonly adminCalls = new Counter('fa_admin_calls_total', 'Admin gateway calls by op and outcome');
-  readonly handoffs = new Counter('fa_handoffs_total', 'Handoffs by reason and delivery outcome');
-  readonly exports = new Counter('fa_exports_total', 'Evidence exports to the export bot by case type and outcome');
-  readonly evidence = new Counter('fa_evidence_total', 'Evidence items by category');
-  readonly guardRejections = new Counter('fa_response_guard_rejections_total', 'LLM responses rejected by the guard');
-  readonly chatFolders = new Counter('fa_chat_folder_total', 'Chat folder changes by folder, action, category/reason and outcome');
-  readonly jobs = new Counter('fa_jobs_total', 'Queue jobs by type and outcome');
-  readonly queueDepth = new Gauge('fa_queue_jobs', 'Jobs in the queue by status');
-  readonly jobLatency = new Histogram('fa_job_latency_ms', 'Job execution latency');
-  readonly turnLatency = new Histogram('fa_turn_latency_ms', 'Turn processing latency');
   readonly llmLatency = new Histogram('fa_llm_latency_ms', 'LLM call latency');
-  readonly adminLatency = new Histogram('fa_admin_latency_ms', 'Admin call latency');
 
   render(): string {
     const lines: string[] = [];

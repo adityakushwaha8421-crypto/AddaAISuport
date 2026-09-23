@@ -14,23 +14,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:llm": "RUN_LLM_EVALS=1 vitest run tests/evals",
-    "test:live": "tsx tests/live/run.ts",
     "db:migrate": "tsx src/storage/cli.ts",
     "telegram:login": "tsx src/telegram/user/login.ts",
     "telegram:session": "tsx src/telegram/user/sessionString.ts",
-    "admin:login": "tsx src/admin/playwright/login.ts",
-    "dev:chat": "tsx src/dev/chat.ts",
     "telegram:check": "tsx src/telegram/user/check.ts"
   },
   "dependencies": {
     "big-integer": "^1.6.52",
     "dotenv": "^17.4.2",
     "openai": "^7.15.0",
-    "pdfjs-dist": "^6.3.289",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
-    "playwright": "^1.63.0",
     "telegram": "^2.26.22",
     "zod": "^4.6.2"
   },

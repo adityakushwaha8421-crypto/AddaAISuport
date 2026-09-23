@@ -43,7 +43,7 @@ export function guardTransport(transport: Transport, botSwitch: Pick<BotSwitch, 
     log.info({ chat: chatId, what }, 'bot is OFF: outgoing action cancelled');
     return new BotOffError(what);
   };
-  // The temporary hold: a customer chat is any chat that is not one of the team's.
+  // Customer messaging disabled (control/customerMessaging.ts): a customer chat is any chat that is not one of the team's.
   const allowed = opts.allowedKinds ?? ENABLED_CUSTOMER_MESSAGES;
   const held = (what: string, chatId: string, kind?: string): Error | undefined => {
     if (opts.customerMessaging || internal.has(chatId) || (kind && allowed.has(kind))) return undefined;
@@ -63,6 +63,8 @@ export function guardTransport(transport: Transport, botSwitch: Pick<BotSwitch, 
       return transport.sendText(chatId, text, sendOpts);
     },
     async forwardMessage(fromChatId, messageId, toChatId) {
+      const hold = held('forward', toChatId);
+      if (hold) throw hold;
       if (!(await botSwitch.isOnNow())) throw cancelled('forward', toChatId);
       return transport.forwardMessage(fromChatId, messageId, toChatId);
     },

@@ -20,7 +20,7 @@ services:
       STORE: postgres
     volumes:
       - ./secrets:/app/secrets
-      - ./config:/app/config:ro
+      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy

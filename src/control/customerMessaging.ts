@@ -1,27 +1,16 @@
 /**
- * TEMPORARY HOLD ON ALL CUSTOMER-FACING MESSAGES.
+ * CUSTOMER MESSAGING IS DISABLED.
  *
- * While this is `false`, nothing automatic is sent to any customer chat: no AI replies, greetings,
- * deposit/withdrawal answers, evidence requests, match-issue replies, export confirmations,
- * follow-ups, or queued/delayed replies — including the "typing…" indicator. Every one of them is
- * refused at the transport (`control/guardedTransport.ts`), the last step before Telegram, and a
- * refused reply is cancelled in the outbox so it is never sent later either.
+ * The automatic reply system was removed (see git history before "Remove the automatic reply
+ * system" for the full previous implementation). This switch is the safety net that stays: while
+ * it is `false`, the guarded transport (`control/guardedTransport.ts`) refuses every send and
+ * forward to a chat that is not one of the team's, whatever code path asks for it — so nothing
+ * added later can message a customer by accident until it is deliberately enabled here.
  *
- * Everything else keeps running for development and testing: messages are read, understood and
- * stored, cases are opened and updated, evidence is analysed and forwarded to the export bot,
- * tickets reach the support group, chats are filed in folders, and the admin commands
- * (/boton, /botoff, /restart) still answer the admin.
- *
- * The reply logic itself is untouched. To bring customer messaging back, set this to `true`
- * (or, to enable it piece by piece, gate the individual acts in `pipeline/processor.ts`).
+ * Reply workflows are to be added one by one. Each one that may message customers must stamp its
+ * outbox `kind` and be listed in `ENABLED_CUSTOMER_MESSAGES`, or flip `CUSTOMER_MESSAGING_ENABLED`.
  */
 export const CUSTOMER_MESSAGING_ENABLED = false;
 
-/**
- * The customer-facing messages that ARE allowed while the hold is on, by the outbox `kind` the
- * sender stamps on them. Enabled step by step, on instruction:
- *  - `payment_confirmed`: after the export bot's "✅ PAYMENT CONFIRMED" naming a User ID, that one
- *    customer is told "Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏"
- *    (in their language), once per confirmation (`handoff/confirmations.ts`).
- */
-export const ENABLED_CUSTOMER_MESSAGES: ReadonlySet<string> = new Set(['payment_confirmed']);
+/** Message kinds allowed through while the switch above is `false`. Empty: nothing at all. */
+export const ENABLED_CUSTOMER_MESSAGES: ReadonlySet<string> = new Set<string>();
