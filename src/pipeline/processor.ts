@@ -35,6 +35,8 @@ export interface ProcessorConfig {
   customerTimezone?: string;
   /** request_only: one evidence request per deposit/withdrawal case, then silence; conversational: the full dialogue. */
   caseReplies?: 'request_only' | 'conversational';
+  /** `false`: the temporary hold — replies are prepared for the trace but never composed or sent. */
+  customerMessaging?: boolean;
   reopenWindowHours: number;
   workflow: WorkflowConfig;
 }
@@ -334,7 +336,9 @@ export class TurnProcessor {
         trace.reason = 'seen_by_human';
         tlog.info({ intent: interp.intent }, 'reply dropped: a human read the message while it was being prepared');
       }
-      let switchedOff = out.acts.length > 0 && !readMeanwhile && !!this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow());
+      // The temporary hold on customer messaging (control/customerMessaging.ts) drops the reply the same way.
+      const held = out.acts.length > 0 && !readMeanwhile && this.deps.cfg.customerMessaging === false;
+      let switchedOff = held || (out.acts.length > 0 && !readMeanwhile && !!this.deps.botSwitch && !(await this.deps.botSwitch.isOnNow()));
       let text: string | undefined;
       if (out.acts.length && !readMeanwhile && !switchedOff) {
         const composed = await this.deps.composer.compose({
@@ -371,8 +375,8 @@ export class TurnProcessor {
         }
       }
       if (switchedOff) {
-        trace.reason = 'bot_off';
-        tlog.info({ intent: interp.intent, acts: trace.acts }, 'reply cancelled: the bot was switched OFF while the message was being handled');
+        trace.reason = held ? 'messaging_disabled' : 'bot_off';
+        tlog.info({ intent: interp.intent, acts: trace.acts, reason: trace.reason }, held ? 'reply dropped: customer messaging is disabled' : 'reply cancelled: the bot was switched OFF while the message was being handled');
         // The case's one evidence request never reached the customer: it is still owed, in full, the
         // next time they write while the bot is ON — so the case forgets it ever asked.
         if (requestedNow && c) {

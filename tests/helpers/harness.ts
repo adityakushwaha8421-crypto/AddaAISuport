@@ -183,6 +183,8 @@ export interface HarnessOptions {
   adminIds?: string[];
   /** request_only (production default): one evidence request per money case, then silence. */
   caseReplies?: 'request_only' | 'conversational';
+  /** Tests exercise the reply logic, so the code-level hold (control/customerMessaging.ts) is lifted unless a test sets `false`. */
+  customerMessaging?: boolean;
   onRestart?: (reply: { chatId: string }) => void;
 }
 
@@ -351,6 +353,7 @@ export class Harness {
         instanceName: opts.instanceName,
         adminIds: opts.adminIds,
         caseReplies: opts.caseReplies ?? 'request_only',
+        customerMessaging: opts.customerMessaging ?? true,
         onRestart: opts.onRestart,
         responseMode: opts.responseMode ?? 'template',
         takeoverMinutes: 0, // like production: a human's chat stays theirs until they hand it back

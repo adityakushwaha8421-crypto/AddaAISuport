@@ -45,9 +45,9 @@ export class OutboxSender {
       return { sent: true, messageId: res.messageId };
     } catch (err) {
       if (err instanceof BotOffError) {
-        await store.outbox.markCancelled(entry.id, 'bot_off');
+        await store.outbox.markCancelled(entry.id, err.reason);
         metrics?.replies.inc({ kind: entry.meta.kind ?? 'reply', outcome: 'cancelled' });
-        log.info({ key: entry.key, chat: entry.chatId }, 'reply cancelled: the bot was switched OFF before it could be sent');
+        log.info({ key: entry.key, chat: entry.chatId, reason: err.reason }, 'reply cancelled: automatic messaging is off');
         return { sent: false, cancelled: true };
       }
       await store.outbox.markFailed(entry.id, (err as Error).message);

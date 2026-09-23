@@ -88,6 +88,18 @@ message and do nothing.
 | `/boton` | Agent ON again, saved permanently; the work that arrived while OFF is picked up. | `✅ Bot is ON` |
 | `/restart` | Safe in-process restart: in-flight jobs finish, Telegram disconnects and reconnects, `.env` and every config file are reloaded, the ON/OFF state is preserved. | `✅ Bot restarted successfully.` (only after the new instance is up) |
 
+## ⚠️ Customer messaging is currently on hold
+
+`src/control/customerMessaging.ts` holds `CUSTOMER_MESSAGING_ENABLED = false`. While it is
+`false`, **no automatic message reaches any customer**: no AI replies, greetings,
+deposit/withdrawal answers, evidence requests, match-issue replies, export confirmations,
+follow-ups or queued replies, and no "typing…" indicator. The transport refuses each one as the
+last step before Telegram, and the outbox cancels it so it is never sent later. Everything
+internal keeps running (cases, evidence analysis, forwards to the export bot, support-group
+tickets, folders, `/boton` `/botoff` `/restart` replies to the admin). The reply logic below is
+unchanged and is re-enabled by flipping that constant (or gating individual acts in
+`src/pipeline/processor.ts` to bring it back piece by piece).
+
 ## How it behaves
 
 | Situation | Behaviour |

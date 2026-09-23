@@ -3,6 +3,7 @@ import { ResilientAdminGateway } from './admin/resilient.js';
 import { CaseService } from './cases/service.js';
 import { AdminCommands, type AdminCommandEvent } from './control/adminCommands.js';
 import { BotSwitch } from './control/botSwitch.js';
+import { CUSTOMER_MESSAGING_ENABLED } from './control/customerMessaging.js';
 import { guardTransport } from './control/guardedTransport.js';
 import type { AdminGateway } from './domain/admin.js';
 import { messageBody, type InboundMessage } from './domain/messages.js';
@@ -38,6 +39,8 @@ export interface AppConfig {
   customerTimezone?: string;
   /** request_only (default): one evidence request per deposit/withdrawal case, then silence. */
   caseReplies?: 'request_only' | 'conversational';
+  /** Customer-facing sends at all; defaults to the code-level hold in `control/customerMessaging.ts`. */
+  customerMessaging?: boolean;
   reopenWindowHours: number;
   workflow: WorkflowConfig;
   /** A customer's rapid-fire messages are handled as one turn: wait this long after the latest … */
@@ -152,7 +155,9 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
   // automatic sends through `transport`, which re-reads the switch right before each send or forward
   // and refuses while OFF; only the admin replies (/boton, /botoff, /restart) bypass it.
   const botSwitch = c.botSwitch ?? new BotSwitch({ settings: c.store.settings, log: c.log, clock: c.clock });
-  const transport = guardTransport(c.transport, botSwitch, c.log.child({ mod: 'bot-switch' }));
+  const customerMessaging = cfg.customerMessaging ?? CUSTOMER_MESSAGING_ENABLED;
+  if (!customerMessaging) c.log.warn('CUSTOMER MESSAGING IS DISABLED (control/customerMessaging.ts): no automatic message reaches any customer');
+  const transport = guardTransport(c.transport, botSwitch, c.log.child({ mod: 'bot-switch' }), { customerMessaging, internalChats: [cfg.supportChatId, cfg.exportChatId] });
   const evidence = new EvidenceService({
     store: c.store,
     download: (ref) => c.transport.downloadMedia(ref),
@@ -203,7 +208,7 @@ export function assemble(c: AppComponents, cfg: AppConfig): App {
     knowledge: c.knowledge,
     locks,
     patterns: c.patterns,
-    cfg: { historyMessages: cfg.historyMessages, customerTimezone: cfg.customerTimezone, caseReplies: cfg.caseReplies ?? 'request_only', reopenWindowHours: cfg.reopenWindowHours, workflow: cfg.workflow },
+    cfg: { historyMessages: cfg.historyMessages, customerTimezone: cfg.customerTimezone, caseReplies: cfg.caseReplies ?? 'request_only', customerMessaging, reopenWindowHours: cfg.reopenWindowHours, workflow: cfg.workflow },
     log: c.log,
     metrics: c.metrics,
     clock: c.clock,
