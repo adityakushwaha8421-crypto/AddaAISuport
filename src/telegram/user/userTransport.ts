@@ -59,6 +59,8 @@ export interface UserTransportOptions {
   chatSendRate?: number;
   /** Grace period before deciding a message in a chat with no send in flight was typed by a human (tests shorten it). */
   ownSendGraceMs?: number;
+  /** How often the update stream is checked for staleness (default 60 s). */
+  updateWatchIntervalMs?: number;
 }
 
 const FLOOD_WAIT = /FLOOD_WAIT_(\d+)/;
@@ -144,6 +146,11 @@ export class UserTransport implements Transport, ReadStateApi {
   private exportPeer?: Api.TypeInputPeer;
   private running = false;
   private authTimer?: NodeJS.Timeout;
+  private watchTimer?: NodeJS.Timeout;
+  /** Update-stream watchdog: when Telegram's state moves on but no update reached us, the stream is dead. */
+  private lastEventAt = Date.now();
+  private lastPts?: number;
+  private reconnects = 0;
   /** Message ids we sent programmatically, per chat — to tell bot messages from a human's. */
   private readonly sentByUs = new Map<string, Set<number>>();
   /** Sends still awaiting Telegram's answer, per chat: their ids are not in `sentByUs` yet. */
@@ -222,6 +229,14 @@ export class UserTransport implements Transport, ReadStateApi {
     }, this.opts.authCheckIntervalMs ?? 5 * 60_000);
     this.authTimer.unref();
 
+    // Telegram delivers a session's updates to its newest connection. If another process ever
+    // connects with this session (a script, a second copy) our stream can go dead while ordinary
+    // calls keep working — so the health check stays green and every message is missed. Watch for it.
+    this.lastEventAt = Date.now();
+    this.lastPts = undefined;
+    this.watchTimer = setInterval(() => void this.checkUpdateStream().catch((err) => this.handleClientError(err, 'update stream check failed')), this.opts.updateWatchIntervalMs ?? 60_000);
+    this.watchTimer.unref();
+
     this.running = true;
     this.opts.log.info(
       { account: me.username ? `@${me.username}` : me.firstName, allowList: this.opts.filter?.allowed?.size ?? 0, ignoreContacts: this.opts.filter?.ignoreContacts ?? false },
@@ -281,6 +296,7 @@ export class UserTransport implements Transport, ReadStateApi {
   }
 
   private async onEvent(ev: NewMessageEvent, handlers: TransportHandlers) {
+    this.lastEventAt = Date.now();
     const m = ev.message;
     const chatId = m.chatId?.toString();
     if (!chatId) return;
@@ -368,7 +384,30 @@ export class UserTransport implements Transport, ReadStateApi {
   async stop(): Promise<void> {
     this.running = false;
     if (this.authTimer) clearInterval(this.authTimer);
+    if (this.watchTimer) clearInterval(this.watchTimer);
     await this.client?.disconnect();
+  }
+
+  /**
+   * The common update box's `pts` counts every message event on the account. If it advanced since
+   * the last check while no update reached us in that time, the stream is dead: reconnect.
+   */
+  async checkUpdateStream(): Promise<'ok' | 'reconnected'> {
+    const client = this.client;
+    if (!client || !this.running) return 'ok';
+    const state = await client.invoke(new Api.updates.GetState());
+    const interval = this.opts.updateWatchIntervalMs ?? 60_000;
+    const silent = Date.now() - this.lastEventAt >= interval;
+    const advanced = this.lastPts !== undefined && state.pts > this.lastPts;
+    this.lastPts = state.pts;
+    if (!(advanced && silent)) return 'ok';
+    this.reconnects++;
+    this.opts.log.warn({ pts: state.pts, silentForMs: Date.now() - this.lastEventAt, reconnects: this.reconnects }, 'update stream is dead (Telegram moved on, nothing arrived): reconnecting');
+    await client.disconnect();
+    await client.connect();
+    this.lastEventAt = Date.now();
+    this.opts.log.info('reconnected; listening again');
+    return 'reconnected';
   }
 
   healthy(): boolean {
