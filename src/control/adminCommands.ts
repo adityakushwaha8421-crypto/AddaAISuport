@@ -19,7 +19,7 @@ const COMMAND = /^\/(boton|botoff|restart)(?:@\w+)?\s*$/i;
 export const REPLIES = {
   on: '✅ Bot is ON',
   off: '⛔ Bot is OFF',
-  updating: '🔄 Pulling the latest code from GitHub and restarting…',
+  updating: '🔄 Pulling the latest code from GitHub…',
   restarted: '✅ Bot restarted successfully.',
   updateFailed: '⚠️ Update failed.',
   stillRunning: 'The bot is still running on the previous code.',

@@ -45,6 +45,20 @@ export interface SupervisorOptions {
   exit?: (code: number) => void;
 }
 
+/** The update, as the admin reads it: commits pulled and files changed, or "already up to date". */
+export function summarise(u: UpdateResult): string {
+  if (!u.commits.length && u.before === u.after) return `📥 Already up to date: ${u.after} — ${u.subject}\nRebuilt. Restarting…`;
+  const shown = u.commits.slice(0, 8).map((c) => `• ${c}`);
+  if (u.commits.length > 8) shown.push(`• … and ${u.commits.length - 8} more`);
+  const areas = [...new Set(u.files.map((f) => f.split('/').slice(0, 2).join('/')))].slice(0, 6).join(', ');
+  return [
+    `📥 Pulled ${u.commits.length} commit${u.commits.length === 1 ? '' : 's'} (${u.before} → ${u.after}):`,
+    ...shown,
+    `${u.files.length} file${u.files.length === 1 ? '' : 's'} changed${areas ? ` in ${areas}` : ''}.${u.installed ? ' Dependencies reinstalled.' : ''}`,
+    'Built. Restarting…',
+  ].join('\n');
+}
+
 /**
  * Keeps exactly one booted agent alive in this process. `/restart` pulls the latest code from
  * GitHub, builds it, stops the running agent cleanly and replaces the process with one running the
@@ -79,9 +93,11 @@ export class Supervisor {
           await this.current?.sendText(reply.chatId, `${REPLIES.updateFailed}\n${reason}\n${REPLIES.stillRunning}`).catch(() => undefined);
           return;
         }
-        log.info({ before: update.before, after: update.after, files: update.files.length, installed: update.installed }, update.files.length ? 'restart: code updated' : 'restart: already up to date');
+        log.info({ before: update.before, after: update.after, files: update.files.length, commits: update.commits.length, installed: update.installed }, update.files.length ? 'restart: code updated' : 'restart: already up to date');
+        // Tell the admin what changed BEFORE the hand-over, from this process.
+        await this.current?.sendText(reply.chatId, summarise(update)).catch((err) => log.warn({ err }, 'restart: the update summary could not be sent'));
       }
-      const confirm = update ? `${REPLIES.restarted}\nCode: ${update.after}${update.files.length ? ` (${update.files.length} files updated from ${update.before})` : ' (already up to date)'}` : REPLIES.restarted;
+      const confirm = update ? `${REPLIES.restarted}\nRunning ${update.after} — ${update.subject}` : REPLIES.restarted;
       log.info({ chat: reply.chatId }, 'restart: stopping the running agent');
       const old = this.current;
       const previous = await old?.carry().catch(() => undefined);

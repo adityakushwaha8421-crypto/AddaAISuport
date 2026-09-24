@@ -142,13 +142,18 @@ describe('Supervisor: /restart', () => {
     const sup = new Supervisor({
       boot: async () => booted(log, 'a', true),
       log: silentLogger,
-      update: async () => (log.push('update'), { before: 'abc1234', after: 'def5678', files: ['src/app.ts', 'README.md'], installed: false }),
+      update: async () => (log.push('update'), { before: 'abc1234', after: 'def5678', files: ['src/app.ts', 'README.md'], commits: ['def5678 Fix the thing', 'bcd2345 Add a test'], subject: 'Fix the thing', installed: false }),
       releaseLock: () => log.push('release-lock'),
       respawn: (c) => log.push(`respawn:${c.chatId}:${c.text.replace(/\n/g, ' | ')}`),
     });
     await sup.start();
     await sup.restart({ chatId: 'admin' });
-    expect(log).toEqual(['update', 'a:stop', 'release-lock', 'respawn:admin:✅ Bot restarted successfully. | Code: def5678 (2 files updated from abc1234)']);
+    expect(log).toEqual([
+      'update',
+      'a:send:admin:📥 Pulled 2 commits (abc1234 → def5678):\n• def5678 Fix the thing\n• bcd2345 Add a test\n2 files changed in src/app.ts, README.md.\nBuilt. Restarting…',
+      'a:stop', 'release-lock',
+      'respawn:admin:✅ Bot restarted successfully. | Running def5678 — Fix the thing',
+    ]);
     expect(sup.running).toBe(false);
   });
 
@@ -173,12 +178,12 @@ describe('Supervisor: /restart', () => {
     const sup = new Supervisor({
       boot: async () => ({ ...booted(log, 'a', true), ownChatId: 'self' }),
       log: silentLogger,
-      update: async () => ({ before: 'a', after: 'a', files: [], installed: false }),
+      update: async () => ({ before: 'a', after: 'a', files: [], commits: [], subject: 'Same code', installed: false }),
       respawn: (c) => log.push(`respawn:${c.chatId}:${c.text.split('\n')[0]}`),
     });
     await sup.start();
     await sup.restartFromSignal();
-    expect(log).toEqual(['a:stop', 'respawn:self:✅ Bot restarted successfully.']);
+    expect(log).toEqual(['a:send:self:📥 Already up to date: a — Same code\nRebuilt. Restarting…', 'a:stop', 'respawn:self:✅ Bot restarted successfully.']);
   });
 
   it('shutdown stops the agent and exits once', async () => {

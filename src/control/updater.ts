@@ -11,6 +11,10 @@ export interface UpdateResult {
   after: string;
   /** Files the pull changed (empty when already up to date). */
   files: string[];
+  /** Commits pulled, newest first, as "hash subject" (empty when already up to date). */
+  commits: string[];
+  /** Subject line of the commit now running. */
+  subject: string;
   /** Whether dependencies were (re)installed. */
   installed: boolean;
 }
@@ -41,6 +45,8 @@ export async function updateFromGit(opts: { cwd: string; log: Logger; timeoutMs?
   await step('git pull', 'git', ['pull', '--ff-only']);
   const after = await step('git', 'git', ['rev-parse', '--short', 'HEAD']);
   const files = before === after ? [] : (await step('git diff', 'git', ['diff', '--name-only', `${before}..${after}`])).split('\n').filter(Boolean);
+  const commits = before === after ? [] : (await step('git log', 'git', ['log', '--format=%h %s', `${before}..${after}`])).split('\n').filter(Boolean);
+  const subject = await step('git log', 'git', ['log', '-1', '--format=%s']);
   let installed = false;
   if (files.some((f) => f === 'package.json' || f === 'package-lock.json')) {
     log.info('update: dependencies changed, installing');
@@ -49,5 +55,5 @@ export async function updateFromGit(opts: { cwd: string; log: Logger; timeoutMs?
   }
   log.info({ before, after, changed: files.length }, 'update: building');
   await step('build', 'npm', ['run', '-s', 'build']);
-  return { before, after, files, installed };
+  return { before, after, files, commits, subject, installed };
 }
