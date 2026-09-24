@@ -10,6 +10,8 @@ export interface Booted {
   sendText(chatId: string, text: string): Promise<unknown>;
   /** State to carry into the next boot (the ON/OFF switch when the store is in-memory). */
   carry(): Promise<CarriedState>;
+  /** The account's Saved Messages chat: where an operator-triggered restart (SIGUSR2) confirms. */
+  ownChatId?: string;
 }
 
 export interface CarriedState {
@@ -112,6 +114,16 @@ export class Supervisor {
 
   get running(): boolean {
     return !!this.current;
+  }
+
+  /** The same update + restart as /restart, triggered from the machine (`kill -USR2 <pid>`); confirms in Saved Messages. */
+  restartFromSignal(): Promise<void> {
+    const chatId = this.current?.ownChatId;
+    if (!chatId) {
+      this.o.log.warn('restart signal ignored: no running agent to confirm to');
+      return Promise.resolve();
+    }
+    return this.restart({ chatId });
   }
 
   private async bootWithRetries(previous: CarriedState | undefined): Promise<Booted> {

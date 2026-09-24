@@ -134,6 +134,10 @@ export function buildInbound(m: GMessage, chatId: string, sender: Api.User, repl
 export class UserTransport implements Transport, ReadStateApi {
   private client?: TelegramClient;
   private selfId = '';
+  /** The account's own user id: Saved Messages is the chat with this id (the admin console). */
+  get ownChatId(): string {
+    return this.selfId;
+  }
   /** Support chat as Telegram reports it on incoming messages ("marked" id, e.g. -5207771735). */
   private supportMarkedId?: string;
   private supportPeer?: Api.TypeInputPeer;

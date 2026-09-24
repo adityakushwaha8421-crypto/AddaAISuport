@@ -75,7 +75,7 @@ same words are an ordinary customer message: stored, not acted on, not answered.
 |---|---|---|
 | `/botoff` | `bot_enabled = false`, saved in the store and the state file. | `⛔ Bot is OFF` |
 | `/boton` | `bot_enabled = true`, saved the same way. | `✅ Bot is ON` |
-| `/restart` | **Update + restart.** `git pull --ff-only` in the project folder, `npm install` if the lockfile changed, `npm run build`, then the running agent stops cleanly and a fresh process starts on the new code (`RESTART_MODE=respawn`, the default; `exit` lets systemd/docker/pm2 restart it instead). `.env` is re-read, the ON/OFF state is kept. If the pull or build fails, nothing restarts and the admin is told why. | `🔄 Pulling the latest code…` at once, then `✅ Bot restarted successfully.` + the commit, from the new process once it is up; or `⚠️ Update failed.` + reason |
+| `/restart` (or `kill -USR2 <pid>` on the machine) | **Update + restart.** `git pull --ff-only` in the project folder, `npm install` if the lockfile changed, `npm run build`, then the running agent stops cleanly and a fresh process starts on the new code (`RESTART_MODE=respawn`, the default; `exit` lets systemd/docker/pm2 restart it instead). `.env` is re-read, the ON/OFF state is kept. If the pull or build fails, nothing restarts and the admin is told why. | `🔄 Pulling the latest code…` at once, then `✅ Bot restarted successfully.` + the commit, from the new process once it is up; or `⚠️ Update failed.` + reason |
 
 ## What is stored
 

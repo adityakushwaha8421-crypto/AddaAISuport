@@ -125,6 +125,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     // The supervisor's restart confirmation goes to the admin who asked, through the raw transport.
     sendText: (chatId, text) => transport.sendText(chatId, text),
     carry: async () => ({ botOn: await app.botSwitch.current() }),
+    ownChatId: transport.ownChatId,
   };
 }
 
@@ -154,6 +155,8 @@ async function main() {
     },
   });
   process.on('SIGINT', () => void supervisor.shutdown('SIGINT'));
+  // `kill -USR2 <pid>`: the same pull + build + restart as /restart, confirmed in Saved Messages.
+  process.on('SIGUSR2', () => void supervisor.restartFromSignal().catch((err) => rootLog.error({ err }, 'restart failed')));
   process.on('SIGTERM', () => void supervisor.shutdown('SIGTERM'));
   process.on('unhandledRejection', (err) => rootLog.error({ err }, 'unhandled rejection'));
   await supervisor.start();

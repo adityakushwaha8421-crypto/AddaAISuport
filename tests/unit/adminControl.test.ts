@@ -168,6 +168,19 @@ describe('Supervisor: /restart', () => {
     expect(sup.running).toBe(true);
   });
 
+  it('a restart signal from the machine is the same restart, confirmed in Saved Messages', async () => {
+    const log: string[] = [];
+    const sup = new Supervisor({
+      boot: async () => ({ ...booted(log, 'a', true), ownChatId: 'self' }),
+      log: silentLogger,
+      update: async () => ({ before: 'a', after: 'a', files: [], installed: false }),
+      respawn: (c) => log.push(`respawn:${c.chatId}:${c.text.split('\n')[0]}`),
+    });
+    await sup.start();
+    await sup.restartFromSignal();
+    expect(log).toEqual(['a:stop', 'respawn:self:✅ Bot restarted successfully.']);
+  });
+
   it('shutdown stops the agent and exits once', async () => {
     const log: string[] = [];
     const exit = vi.fn();
