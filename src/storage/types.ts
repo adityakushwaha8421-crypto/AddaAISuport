@@ -12,6 +12,8 @@ export interface UserRecord {
   preferredLanguage?: 'hinglish' | 'english' | 'hindi';
   /** A human wrote in this chat from the account: theirs until this time (far future = until the resume command). */
   humanTakeoverUntil?: Date;
+  /** When the chat's history was checked once for an existing human conversation. */
+  conversationChecked?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +23,7 @@ export interface UserRepo {
   get(id: string): Promise<UserRecord | undefined>;
   setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']): Promise<void>;
   setHumanTakeover(userId: string, until: Date | undefined): Promise<void>;
+  setConversationChecked(userId: string, at: Date): Promise<void>;
 }
 
 // ── Evidence requests (one per case) ───────────────────────────────────────

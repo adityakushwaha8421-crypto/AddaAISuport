@@ -35,6 +35,8 @@ const envSchema = z.object({
   BOT_STATE_FILE: z.string().trim().min(1).default('data/bot-state.json'),
   /** With STORE=memory: the evidence-request ledger on disk, so a case is never asked twice across a restart. */
   REQUESTS_STATE_FILE: z.string().trim().min(1).default('data/requests.json'),
+  /** With STORE=memory: customers' language, human takeover and conversation check on disk. */
+  USERS_STATE_FILE: z.string().trim().min(1).default('data/users.json'),
   /**
    * How /restart brings the updated code up after `git pull` + build. respawn (default): this process
    * starts a fresh one and exits (plain `npm start`, nohup). exit: this process just exits with code 0
@@ -104,7 +106,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, require: EnvReq
     if (require.includes('telegram')) {
       if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) problems.push('TELEGRAM_API_ID and TELEGRAM_API_HASH are required (https://my.telegram.org)');
       // A path setting that holds a secret would end up as directory names on disk: refuse it outright.
-      for (const key of ['TELEGRAM_SESSION_FILE', 'INSTANCE_LOCK_FILE', 'BOT_STATE_FILE', 'REQUESTS_STATE_FILE'] as const) {
+      for (const key of ['TELEGRAM_SESSION_FILE', 'INSTANCE_LOCK_FILE', 'BOT_STATE_FILE', 'REQUESTS_STATE_FILE', 'USERS_STATE_FILE'] as const) {
         const v = env[key];
         if (looksLikeSessionString(v) || v.length > 200 || /\s/.test(v)) problems.push(`${key} must be a file path such as secrets/telegram.session.enc (the session string belongs in TELEGRAM_SESSION)`);
       }

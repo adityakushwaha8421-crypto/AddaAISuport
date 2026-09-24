@@ -35,9 +35,14 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## When the agent stays silent even for a deposit/withdrawal message
 
 - `/botoff` is in force (checked first, fresh from the store, and again inside the transport right before the send).
-- The chat already has an open request of the same type younger than `CASE_REOPEN_HOURS` (48).
-  A clearly named problem of the *other* type gets its own single request.
+- The chat already has an open request younger than `CASE_REOPEN_HOURS` (48) — of either type. After
+  the request the chat is **completely silent**: another complaint, a different kind of problem, a
+  question or a file all get nothing. The team handles it.
 - A human wrote in that chat from the account (until they type `/ai` or `/bot` there, which is deleted again).
+- On a customer's first message, the chat's Telegram history already holds a message from this
+  account that the agent did not send: a human is already talking to them, so the chat is theirs
+  (same `/ai` to hand back). If the history cannot be read, the agent stays silent for that message
+  and checks again on the next one.
 - A human already read the message on Telegram (`REPLY_ONLY_TO_UNREAD`).
 - The message is older than `STALE_MESSAGE_SECONDS` (300) when handled: a restart or reconnect catch-up never answers old messages.
 - The message has no text (a bare screenshot or file says nothing about the issue).
@@ -84,7 +89,8 @@ same words are an ordinary customer message: stored, not acted on, not answered.
 
 ## What is stored
 
-- `users` — Telegram id, chat id, username, first name, language code.
+- `users` — Telegram id, chat id, username, first name, language code, detected language, human
+  takeover, conversation-check time. With `STORE=memory` kept on disk (`USERS_STATE_FILE`).
 - `messages` — every inbound customer message (text/caption after secret scrubbing, media
   references, reply-to id, Telegram date) and every outbound one (`meta.kind`).
 - `evidence_requests` — one row per case: chat, user, issue type, language, status

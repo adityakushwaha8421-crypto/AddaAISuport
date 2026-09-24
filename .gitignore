@@ -23,3 +23,5 @@ data/bot-state.json
 data/restart-confirm.json
 data/requests.json
 data/requests.json.tmp
+data/users.json
+data/users.json.tmp

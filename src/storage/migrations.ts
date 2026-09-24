@@ -199,4 +199,8 @@ CREATE INDEX evidence_requests_chat_idx ON evidence_requests (chat_id, status, c
 CREATE INDEX evidence_requests_user_idx ON evidence_requests (user_id, status);
 `,
   },
+  {
+    id: '005_users_conversation_checked',
+    sql: `ALTER TABLE users ADD COLUMN conversation_checked timestamptz;`,
+  },
 ];

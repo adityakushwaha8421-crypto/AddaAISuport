@@ -6,14 +6,49 @@ import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessag
 /** Deep copy so callers can't mutate stored state without saving (mirrors DB semantics). */
 const clone = <T>(v: T): T => structuredClone(v);
 
+/** Atomic JSON file write (write a temp file, then rename). */
+function saveJson(file: string, value: unknown) {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(value));
+  renameSync(tmp, file);
+}
+function loadJson<T>(file: string | undefined): T | undefined {
+  if (!file) return undefined;
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as T;
+  } catch {
+    return undefined;
+  }
+}
+const asDate = (v: unknown) => (typeof v === 'string' ? new Date(v) : undefined);
+
+/**
+ * Customers. With a `file`, what matters for the rules — language, a human's takeover, the one-time
+ * conversation check — survives a process restart.
+ */
 class MemoryUsers implements UserRepo {
   readonly rows = new Map<string, UserRecord>();
+  constructor(private readonly file?: string) {
+    const raw = loadJson<Array<Record<string, unknown>>>(file);
+    for (const r of raw ?? []) {
+      this.rows.set(String(r.id), {
+        ...(r as unknown as UserRecord),
+        createdAt: asDate(r.createdAt) ?? new Date(), updatedAt: asDate(r.updatedAt) ?? new Date(),
+        humanTakeoverUntil: asDate(r.humanTakeoverUntil), conversationChecked: asDate(r.conversationChecked),
+      });
+    }
+  }
+  private save() {
+    if (this.file) saveJson(this.file, [...this.rows.values()]);
+  }
   async upsert(u: Pick<UserRecord, 'id' | 'chatId'> & Partial<UserRecord>): Promise<UserRecord> {
     const now = new Date();
     const prev = this.rows.get(u.id);
     const defined = Object.fromEntries(Object.entries(u).filter(([, v]) => v !== undefined));
     const next: UserRecord = { createdAt: now, ...prev, ...defined, updatedAt: now } as UserRecord;
     this.rows.set(u.id, clone(next));
+    this.save();
     return clone(next);
   }
   async get(id: string) {
@@ -22,11 +57,15 @@ class MemoryUsers implements UserRepo {
   }
   async setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']) {
     const r = this.rows.get(userId);
-    if (r) r.preferredLanguage = lang;
+    if (r) (r.preferredLanguage = lang), this.save();
   }
   async setHumanTakeover(userId: string, until: Date | undefined) {
     const r = this.rows.get(userId);
-    if (r) r.humanTakeoverUntil = until;
+    if (r) (r.humanTakeoverUntil = until), this.save();
+  }
+  async setConversationChecked(userId: string, at: Date) {
+    const r = this.rows.get(userId);
+    if (r) (r.conversationChecked = at), this.save();
   }
 }
 
@@ -47,11 +86,7 @@ class MemoryRequests implements EvidenceRequestRepo {
     }
   }
   private save() {
-    if (!this.file) return;
-    mkdirSync(dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.rows));
-    renameSync(tmp, this.file);
+    if (this.file) saveJson(this.file, this.rows);
   }
   async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }) {
     const { createdAt, ...rest } = r;
@@ -121,12 +156,13 @@ class MemorySettings implements SettingsRepo {
 export class MemoryStore implements Store {
   readonly kind = 'memory' as const;
   settings = new MemorySettings();
-  users = new MemoryUsers();
+  users: MemoryUsers;
   messages = new MemoryMessages();
   requests: MemoryRequests;
-  /** `requestsFile`: keep the evidence-request ledger on disk so "ask once" survives a restart. */
-  constructor(opts: { requestsFile?: string } = {}) {
+  /** `requestsFile` / `usersFile`: keep the request ledger and the customers' state on disk, so the rules survive a restart. */
+  constructor(opts: { requestsFile?: string; usersFile?: string } = {}) {
     this.requests = new MemoryRequests(opts.requestsFile);
+    this.users = new MemoryUsers(opts.usersFile);
   }
   async healthy() {
     return true;

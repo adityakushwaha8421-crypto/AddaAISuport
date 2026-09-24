@@ -96,14 +96,14 @@ describe('identify the issue, request once, then silence', () => {
     expect(llm.calls.filter((c) => c.purpose === 'issue_type')).toHaveLength(2);
   });
 
-  it('a different issue later gets its own single request; the same one again does not, until the case is old', async () => {
+  it('after the request the chat is completely silent — even for a different kind of problem — until the case is old', async () => {
     expect(await say('two', 'deposit nahi hua')).toBe('requested');
-    expect(await say('two', 'aur mera withdrawal bhi nahi aaya')).toBe('requested');
-    expect(repliesTo('two')).toHaveLength(2);
+    expect(await say('two', 'aur mera withdrawal bhi nahi aaya')).toBe('already_requested');
     expect(await say('two', 'deposit nahi hua')).toBe('already_requested');
-    advance(49 * 60); // two days later: a fresh problem of the same kind
-    expect(await say('two', 'deposit nahi hua')).toBe('requested');
-    expect(repliesTo('two')).toHaveLength(3);
+    expect(repliesTo('two')).toHaveLength(1);
+    advance(49 * 60); // two days later: a fresh problem
+    expect(await say('two', 'withdrawal nahi aaya')).toBe('requested');
+    expect(repliesTo('two')).toHaveLength(2);
   });
 
   it('a human in the chat wins: their message silences the agent until /ai; a message they already read is theirs', async () => {

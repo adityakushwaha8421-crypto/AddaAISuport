@@ -62,5 +62,6 @@ export function guardTransport(transport: Transport, botSwitch: Pick<BotSwitch, 
     },
   };
   if (transport.deleteMessage) guarded.deleteMessage = (chatId, id) => transport.deleteMessage!(chatId, id);
+  if (transport.recentOutgoing) guarded.recentOutgoing = (chatId, limit) => transport.recentOutgoing!(chatId, limit);
   return guarded;
 }

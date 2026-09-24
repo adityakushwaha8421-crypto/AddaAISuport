@@ -47,3 +47,23 @@ describe('Saved Messages routing', () => {
     expect(onOwnOutgoing).toHaveBeenCalledWith({ chatId: '5595717485', messageId: 3, text: '/botoff' });
   });
 });
+
+describe('export bot chat routing', () => {
+  const t2 = () => {
+    const t = new UserTransport({ apiId: 1, apiHash: 'x', sessions: new MemorySessionStore(), log: silentLogger, ownSendGraceMs: 1, exportChatId: '8869616760' });
+    (t as unknown as { selfId: string }).selfId = '8412466614';
+    return t as unknown as { onEvent(ev: unknown, handlers: unknown): Promise<void> };
+  };
+  it("the bot's message goes to onExportMessage; the account's own message there is nothing (not a customer, not a takeover)", async () => {
+    const t = t2();
+    const onExportMessage = vi.fn(async () => undefined);
+    const onOwnOutgoing = vi.fn(async () => undefined);
+    const onMessage = vi.fn(async () => undefined);
+    await t.onEvent(event('8869616760', 5, '✅ PAYMENT CONFIRMED\nUser ID: 6135570708', false), { onExportMessage, onOwnOutgoing, onMessage });
+    await t.onEvent(event('8869616760', 6, 'forwarded evidence', true), { onExportMessage, onOwnOutgoing, onMessage });
+    expect(onExportMessage).toHaveBeenCalledTimes(1);
+    expect(onExportMessage).toHaveBeenCalledWith({ messageId: 5, text: '✅ PAYMENT CONFIRMED\nUser ID: 6135570708', replyToMessageId: undefined });
+    expect(onOwnOutgoing).not.toHaveBeenCalled();
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+});

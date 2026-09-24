@@ -22,8 +22,9 @@ app.ts ─ onMessage:  admin command? → control/adminCommands.ts (replies thro
         ─ onSupportMessage / onExportForward: log only.
 
 workflows/evidenceRequest.ts (per customer message, in this order; any other outcome = silence):
-  bot_enabled fresh? → not stale? → no human takeover? → has text? → detect language →
-  open request in this chat? (same type & young → silent; the model is not asked inside an open case) →
+  bot_enabled fresh? → not stale? → no human takeover? → first contact: no human message already in the
+  chat's Telegram history (recentOutgoing minus what we sent)? → has text? → detect language →
+  open request in this chat (either type, younger than CASE_REOPEN_HOURS)? → silent, no model call →
   nlu/issueType.ts: moneyDirection scorer, else the model once (deposit | withdrawal | other | unclear) →
   not read by a human? → bot_enabled once more → requests.create('sending') → guarded sendText(kind
   'evidence_request') → markSent + outbound message row. A failed send removes the row.
@@ -64,7 +65,9 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
   the send's `kind` is allowlisted, and `BotOffError` while `/botoff` is in force. Admin replies
   use the raw transport on purpose.
 - **One request per case, then silence.** An open request (younger than `CASE_REOPEN_HOURS`)
-  silences the chat for that issue type; no reminder, status or follow-up exists in the code.
+  silences the whole chat; no reminder, status or follow-up exists in the code. With the in-memory
+  store the request ledger and the customers' state (language, takeover, conversation check) live
+  in `data/`, so restarts change nothing.
 - **No guess, no question.** A message that is not clearly a deposit or withdrawal is stored and
   left alone.
 - **Kill switch survives everything.** `bot.enabled` in the store (every process sees it) and the

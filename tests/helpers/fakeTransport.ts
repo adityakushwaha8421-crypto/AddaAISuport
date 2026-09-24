@@ -11,7 +11,10 @@ export class FakeTransport implements Transport, ReadStateApi {
   readonly sent: Array<{ chatId: string; text: string; kind?: string; replyTo?: number }> = [];
   readonly deleted: Array<{ chatId: string; messageId: number }> = [];
   readonly readUpTo = new Map<string, number>();
+  /** Messages a human sent from the account in a chat before the agent ever saw it. */
+  readonly humanHistory = new Map<string, number[]>();
   failSends = 0;
+  failHistoryChecks = 0;
   handlers?: TransportHandlers;
   private counters = new Map<string, number>();
   nextId(chatId: string) {
@@ -32,11 +35,31 @@ export class FakeTransport implements Transport, ReadStateApi {
       throw new Error('FLOOD_WAIT_3');
     }
     const messageId = this.nextId(chatId);
+    this.sentIds.set(`${chatId}:${this.sent.length}`, messageId);
     this.sent.push({ chatId, text, kind: opts?.kind, replyTo: opts?.replyToMessageId });
     return { messageId };
   }
   async deleteMessage(chatId: string, messageId: number) {
     this.deleted.push({ chatId, messageId });
+  }
+  async recentOutgoing(chatId: string, limit: number) {
+    if (this.failHistoryChecks > 0) {
+      this.failHistoryChecks--;
+      throw new Error('FLOOD_WAIT_5');
+    }
+    const ownIds = this.sent.reduce<number[]>((acc, s, i) => (s.chatId === chatId ? [...acc, this.idOf(chatId, i)] : acc), []);
+    return [...ownIds, ...(this.humanHistory.get(chatId) ?? [])].sort((a, b) => b - a).slice(0, limit);
+  }
+  /** The id a send got: sends are recorded in order, ids per chat are sequential across in+out. */
+  private idOf(chatId: string, sentIndex: number) {
+    return this.sentIds.get(`${chatId}:${sentIndex}`) ?? 0;
+  }
+  private readonly sentIds = new Map<string, number>();
+  /** A human already wrote in this chat from the account (before the agent ran). */
+  humanWroteEarlier(chatId: string): number {
+    const id = this.nextId(chatId);
+    this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), id]);
+    return id;
   }
   async seenByHuman(chatId: string, messageId: number) {
     return (this.readUpTo.get(chatId) ?? 0) >= messageId;
