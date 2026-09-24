@@ -10,7 +10,10 @@ export const DEPOSIT = [
   'wallet me paisa nahi aya payment ho gya', 'add cash nahi hua', 'transaction successful but wallet 0', 'amount add karne ke baad bhi balance nahi aaya',
   'balance me add nahi hua paisa', 'dipojit kiya tha nahi hua', 'paytm se payment kiya hai wallet me nahi dikh raha', 'add kiya 1000 abhi tak pending',
   'paise jama kiye the app me nahi aaye', 'qr scan karke pay kiya balance nahi badha', 'payment cut gaya add nahi hua', 'wallet balance zero dikha raha hai paise dale the',
-  // English
+  // English, as customers actually type it
+  'Payment cut my account 300 not available my wallet', 'Payment deducted but wallet not credited', 'Money cut from account but not added to wallet',
+  'Amount deducted, balance not updated', 'Payment successful but wallet not showing money', 'payment gone from account but not in game',
+  '300 debited from my account, wallet still same', 'my money is deducted but not added in my id', 'deducted 200 not credit in wallet', 'paid 500, wallet not updated',
   'I added 1000 but my wallet is still empty', 'money deducted from bank, not showing in app', 'deposit failed but money gone', 'amount debit ho gaya but not credited in wallet',
   'I paid through UPI but the balance did not update', 'my deposit is not reflecting', 'added money, wallet not updated',
   // Hindi

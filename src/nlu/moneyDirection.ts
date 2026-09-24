@@ -65,6 +65,9 @@ const DEPOSIT_CUES: Array<[RegExp, number]> = [
   // debited/deducted from the customer's bank (money moved towards the app)
   [rx(String.raw`\b(?:deduct\w*|debit\w*|kat\s+(?:gaya|gya|gaye|gye|liya|liye|gayi|gyi)|kata|kate|kati|cut\s+(?:ho|hua|gaya|ho\s+gaya|hogaya))\b|\bकट\s+(?:गया|गए|गये)|\bकाट\s+लिया`), 1],
   [rx(String.raw`\b${BANK}\s+(?:se|से)${W(4)}(?:kat\w*|cut|deduct\w*|debit\w*|gaya|gaye|gye|chale|nikal\w*|कट|गए|गये)`), 2],
+  // money gone from the customer's account/bank and not in the app ("payment gone from account but not in game")
+  [rx(String.raw`\b(?:gone|went|left|chala\s+gaya|chale\s+gaye|nikal\s+gaya|nikal\s+gaye)\s+(?:from\s+)?(?:my\s+|the\s+)?(?:${BANK}|account|acount)\b`), 2],
+  [rx(String.raw`\b${NOT}\s+(?:in|into|on)\s+(?:my\s+|the\s+)?(?:${APP}|account\s+balance)\b|\b(?:game|app|id)\s+(?:me|mein|m|par|pe|में)${W(2)}${NOT}\b`), 1.5],
   // money sent/transferred to the app
   [rx(String.raw`\b(?:transfer\w*|bheja|bheje|bhej\s+diya|send|sent|ट्रांसफर|भेजा|भेजे)${W(4)}${APP}\b`), 2],
   [rx(String.raw`\b${APP}\s+(?:me|mein|m|par|pe|ko|mai|में)${W(2)}(?:transfer\w*|bheja|bheje|daal\w*|dal\w*|add|dala|ट्रांसफर|डाल\S*|भेज\S*)`), 2],
