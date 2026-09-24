@@ -49,8 +49,8 @@ const WITHDRAW_WORD = rx(String.raw`\b(?:withdr\w*|widraw\w*|vidraw\w*|vithdraw\
 const DEPOSIT_CUES: Array<[RegExp, number]> = [
   [DEPOSIT_WORD, 2],
   // add money / add nahi hua / add kiya / नहीं जुड़ा
-  [rx(String.raw`\b(?:add|ad|aad|added|adding)\s+(?:money|cash|amount|balance|fund\w*|kiya|kia|kiye|kari|kar\w*|hua|hue|ho|hi|diya|diye|${NOT})\b`), 2],
-  [rx(String.raw`\b${NOT}\s+(?:add|ad|aad|added|jud\w*|जुड़\S*)\b|\bजुड़े\s+नहीं|\bनहीं\s+जुड़`), 2],
+  [rx(String.raw`\b(?:add|ad|aad|added|adding)\s+(?:money|cash|amount|balance|fund\w*|kiya|kia|kiye|kari|kar\w*|kr\w*|krne|hua|hue|ho|hi|diya|diye|${NOT})\b`), 2],
+  [rx(String.raw`\b${NOT}\s+(?:add|ad|aad|added|jud\w*|जुड़\S*)\b|\bजुड़े\s+नहीं|\bनहीं\s+जुड़|\b(?:ऐड|एड|ऐडेड)\s+(?:नहीं|नही|ना)|\b(?:ऐड|एड)\s+(?:किया|किए|कर)`), 2],
   // paise daale (money put in — "details daal diye" is typing, not paying), recharge
   [rx(String.raw`\b(?:${MONEY}|\d+(?:\s*(?:ka|ke|rs|rupay|rupaye))?)${W(2)}(?:dala|daala|dale|daale|dali|daali|daal|dal|dalay|डाला|डाले|डाली)\b|\b(?:dala|daala|dale|daale|dali|daali|daal|dal|dalay|डाला|डाले|डाली)${W(2)}(?:${MONEY}|\d+)\b`), 2],
   [rx(String.raw`\brecharge\w*|\bरिचार्ज`), 2],

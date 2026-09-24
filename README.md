@@ -5,8 +5,13 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
 
 1. **One evidence request per case.** When a customer's message is clearly a **deposit** problem
    (money paid into the wallet, not showing) or a **withdrawal** problem (money withdrawn, not in
-   the bank), read from the direction of the money in Hinglish/Hindi/English, the agent sends the
-   list of documents the team needs — **once** — in the customer's language. After that it is
+   the bank), the agent sends the list of documents the team needs — **once** — in the customer's
+   language. The issue is read from the direction of the money in Hinglish/Hindi/English with
+   misspellings (`src/nlu/moneyDirection.ts`), after ruling out match problems
+   (`src/nlu/matchIssue.ts`); a vague follow-up ("paisa nahi aaya", "abhi tak nahi hua") takes its
+   direction from the customer's recent messages; only when none of that is decisive is the model
+   asked once, with that history as context (`src/nlu/issueType.ts`). Phrase tables:
+   `tests/helpers/issuePhrases.ts`; live accuracy run: `RUN_LLM_EVALS=1 npm test -- tests/evals`. After that it is
    silent in that case: no acknowledgements, reminders, status updates or follow-ups, whatever the
    customer writes or sends. The human team handles everything from there.
 2. **One solved note per confirmed payment.** When the export bot sends `✅ PAYMENT CONFIRMED`

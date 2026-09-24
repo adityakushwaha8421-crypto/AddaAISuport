@@ -77,7 +77,12 @@ export class EvidenceRequestWorkflow {
     const open = await store.requests.listOpen(msg.chatId);
     const reopenMs = (this.o.reopenHours ?? 48) * 3_600_000;
     const live = open.filter((r) => r.status === 'sending' || now.getTime() - r.createdAt.getTime() < reopenMs);
-    const verdict = await classifyIssue(body, live.length ? undefined : this.o.llm, clog);
+    const history = (await store.messages.recent(msg.chatId, 12))
+      .filter((m) => m.direction === 'in' && m.telegramMessageId !== msg.messageId && now.getTime() - m.createdAt.getTime() < 48 * 3_600_000)
+      .map((m) => [m.text, m.caption].filter(Boolean).join('\n'))
+      .filter(Boolean);
+    const verdict = await classifyIssue(body, live.length ? undefined : this.o.llm, clog, { history });
+    clog.debug({ category: verdict.category, source: verdict.source }, 'issue classified');
     if (!verdict.type) return live.length ? 'already_requested' : 'not_an_issue';
     if (live.some((r) => r.issueType === verdict.type || r.status === 'sending')) return 'already_requested';
 
