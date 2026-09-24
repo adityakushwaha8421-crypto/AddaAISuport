@@ -1,8 +1,9 @@
 import type { Logger } from 'pino';
-import { AdminCommands, type AdminCommandEvent } from './control/adminCommands.js';
+import { AdminCommands, REPLIES, type AdminCommandEvent } from './control/adminCommands.js';
 import { BotSwitch } from './control/botSwitch.js';
 import { CUSTOMER_MESSAGING_ENABLED, ENABLED_CUSTOMER_MESSAGES } from './control/customerMessaging.js';
 import { guardTransport } from './control/guardedTransport.js';
+import { OtherCopyDetector } from './control/otherCopy.js';
 import { messageBody, type InboundMessage } from './domain/messages.js';
 import type { LlmClient } from './llm/client.js';
 import type { Metrics } from './observability/metrics.js';
@@ -26,6 +27,9 @@ export interface AppConfig {
   staleSeconds?: number;
   reopenHours?: number;
   resumeCommand?: string;
+  /** Shown by /status. */
+  version?: string;
+  transportStats?: () => { reconnects: number; lastUpdateAt: Date };
 }
 
 export interface AppComponents {
@@ -50,6 +54,9 @@ export interface App {
   transport: Transport;
   requests: EvidenceRequestWorkflow;
   confirmations: PaymentConfirmedWorkflow;
+  /** Replies from another (old) copy of the bot seen in customer chats. */
+  otherCopy: OtherCopyDetector;
+  status(): Promise<string>;
   /** A customer wrote to the account: stored; a deposit/withdrawal issue gets its one request. */
   onMessage(msg: InboundMessage): Promise<RequestOutcome | 'admin' | 'duplicate'>;
   /** The account owner typed in Saved Messages (admin console). */
@@ -75,13 +82,33 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     customerMessaging: CUSTOMER_MESSAGING_ENABLED,
     internalChats: [cfg.supportChatId, cfg.exportChatId],
   });
-  // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.
-  const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart });
   const requests = new EvidenceRequestWorkflow({
     store: c.store, transport, botSwitch, llm: c.llm, readState: c.readState, log: c.log.child({ mod: 'evidence-request' }), clock: c.clock,
     staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, resumeCommand: cfg.resumeCommand,
   });
   const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
+  // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.
+  const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart, status: () => status() });
+  const otherCopy = new OtherCopyDetector();
+  const startedAt = now();
+  let requestsSent = 0;
+  let notesSent = 0;
+  const status = async (): Promise<string> => {
+    const on = await botSwitch.isOnNow();
+    const up = Math.round((now().getTime() - startedAt.getTime()) / 60_000);
+    const stats = cfg.transportStats?.();
+    const seen = otherCopy.recent(now(), 24);
+    const lines = [
+      on ? REPLIES.on : REPLIES.off,
+      `Code: ${cfg.version ?? 'unknown'} · up ${up >= 60 ? `${Math.floor(up / 60)}h ${up % 60}m` : `${up}m`}`,
+      `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}`,
+    ];
+    if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
+    lines.push(seen.length
+      ? `⚠️ OLD bot wording seen ${seen.length}× in the last 24h (last ${seen[seen.length - 1]!.at.toISOString().slice(11, 16)} UTC, chat ${seen[seen.length - 1]!.chatId}): another copy of the old bot is replying`
+      : 'No old-bot replies seen in the last 24h');
+    return lines.join('\n');
+  };
 
   return {
     botSwitch,
@@ -89,6 +116,8 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     transport,
     requests,
     confirmations,
+    otherCopy,
+    status,
     async onMessage(msg) {
       // An authorised admin's /boton, /botoff or /restart is acted on at once.
       if (await adminCommands.handle({ chatId: msg.chatId, messageId: msg.messageId, fromUserId: msg.userId, text: messageBody(msg) })) return 'admin';
@@ -108,6 +137,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       c.metrics?.inboundMessages.inc({ kind: msg.media.length ? 'media' : 'text' });
       // The one workflow. Its first line checks the switch; every other outcome is silence.
       const outcome = await requests.onMessage(msg);
+      if (outcome === 'requested') requestsSent++;
       await c.store.messages.markProcessed(msg.chatId, [msg.messageId]);
       c.metrics?.outbound.inc({ kind: 'evidence_request', outcome });
       c.log.info({ chat: msg.chatId, message: msg.messageId, media: msg.media.length, outcome, at: now().toISOString() }, outcome === 'requested' ? 'customer message: evidence request sent' : 'customer message stored, no reply');
@@ -120,10 +150,14 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       c.log.info({ chat: msg.chatId, message: msg.messageId }, 'support group message received (no handler)');
     },
     async onOwnOutgoing(ev) {
+      if (otherCopy.note(ev.chatId, ev.text, now())) {
+        c.log.warn({ chat: ev.chatId, message: ev.messageId, sightings24h: otherCopy.recent(now(), 24).length }, 'ANOTHER COPY OF THE OLD BOT replied in this chat (old wording, not sent by this process)');
+      }
       await requests.onOwnOutgoing(ev);
     },
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);
+      if (outcome === 'solved') notesSent++;
       c.metrics?.outbound.inc({ kind: 'payment_confirmed', outcome });
     },
   };

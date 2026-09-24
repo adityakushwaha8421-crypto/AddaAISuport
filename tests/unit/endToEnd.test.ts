@@ -151,3 +151,30 @@ describe('end to end', () => {
     expect(t.sent).toHaveLength(0);
   });
 });
+
+describe('/status and old-bot detection', () => {
+  it('/status reports ON/OFF, version, what was sent, and any old-bot replies seen in customer chats', async () => {
+    const store = new MemoryStore();
+    const t = new FakeTransport();
+    const app = assemble({ store, transport: t, log: silentLogger, clock: () => now }, { adminIds: [ADMIN], supportChatId: SUPPORT, exportChatId: EXPORT_BOT, version: 'abc1234', transportStats: () => ({ reconnects: 5, lastUpdateAt: new Date(now.getTime() - 12_000) }) });
+    await app.onMessage(t.inbound('6135570708', 'deposit nahi hua', [], now));
+    // The account sends something this process did not: a human's short line, then the OLD bot's wording.
+    await app.onOwnOutgoing({ chatId: '6135570708', messageId: 50, text: 'dekh raha hoon' });
+    expect(app.otherCopy.sightings).toHaveLength(0);
+    await app.onOwnOutgoing({ chatId: '6135570709', messageId: 51, text: 'Samajh sakta hoon sir, pareshani ke liye sorry 🙏' });
+    await app.onOwnOutgoing({ chatId: '6135570710', messageId: 52, text: 'Samajh gaya sir 👍 Deposit ka issue hai ya withdrawal ka?' });
+    expect(app.otherCopy.sightings.map((s) => s.chatId)).toEqual(['6135570709', '6135570710']);
+    await app.onMessage(t.inbound(ADMIN, '/status', [], now));
+    const reply = t.sent.at(-1)!;
+    expect(reply.chatId).toBe(ADMIN);
+    expect(reply.text).toMatch(/✅ Bot is ON/);
+    expect(reply.text).toMatch(/Code: abc1234/);
+    expect(reply.text).toMatch(/1 evidence request, 0 solved notes/);
+    expect(reply.text).toMatch(/stream taken over 5× since start ⚠️ another connection is using this session/);
+    expect(reply.text).toMatch(/OLD bot wording seen 2× in the last 24h/);
+    // A customer typing /status gets nothing and learns nothing.
+    const before = t.sent.length;
+    expect(await app.onMessage(t.inbound('6135570711', '/status', [], now))).toBe('not_an_issue');
+    expect(t.sent).toHaveLength(before);
+  });
+});

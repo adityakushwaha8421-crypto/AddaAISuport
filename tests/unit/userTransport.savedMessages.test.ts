@@ -84,7 +84,7 @@ describe('update-stream watchdog', () => {
 
   it('reconnects when Telegram\'s state advanced but no update arrived', async () => {
     const { t, calls } = withClient([100, 100, 105]);
-    (t as unknown as { lastEventAt: number }).lastEventAt = Date.now() - 5000; // nothing received for a while
+    (t as unknown as { lastEventAt: number }).lastEventAt = Date.now() - 5000; // nothing received for two intervals
     expect(await t.checkUpdateStream()).toBe('ok'); // first look: nothing to compare with
     expect(await t.checkUpdateStream()).toBe('ok'); // pts unchanged: quiet account, stream fine
     expect(await t.checkUpdateStream()).toBe('reconnected'); // pts moved, we saw nothing

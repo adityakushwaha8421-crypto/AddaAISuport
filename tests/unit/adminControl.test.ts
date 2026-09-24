@@ -45,10 +45,11 @@ describe('BotSwitch', () => {
 });
 
 describe('AdminCommands', () => {
-  it('parses the three commands, with or without a bot suffix, case-insensitively', () => {
+  it('parses the four commands, with or without a bot suffix, case-insensitively', () => {
     expect(parseAdminCommand('/boton')).toBe('boton');
     expect(parseAdminCommand(' /BotOff ')).toBe('botoff');
     expect(parseAdminCommand('/restart@fa_bot')).toBe('restart');
+    expect(parseAdminCommand('/status')).toBe('status');
     expect(parseAdminCommand('/boton please')).toBeUndefined();
     expect(parseAdminCommand('boton')).toBeUndefined();
     expect(parseAdminCommand(undefined)).toBeUndefined();

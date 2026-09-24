@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import dotenv from 'dotenv';
@@ -32,6 +33,7 @@ function createTransport(env: Env, log: Logger): UserTransport {
 }
 
 dotenv.config();
+const run = promisify(execFile);
 
 /** The restart confirmation travels from the old process to the new one through a small file next to the bot state. */
 const confirmationFile = (stateFile: string) => join(dirname(stateFile), 'restart-confirm.json');
@@ -71,6 +73,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
   if (!env.EXPORT_BOT_ID) log.warn('EXPORT_BOT_ID not set: PAYMENT CONFIRMED messages cannot be recognised');
 
   const transport = createTransport(env, log);
+  const version = await run('git', ['rev-parse', '--short', 'HEAD'], { cwd: process.cwd() }).then((r) => r.stdout.trim()).catch(() => 'unknown');
   const app: App = assemble(
     { store, transport, log, metrics, llm, readState: env.REPLY_ONLY_TO_UNREAD ? transport : undefined },
     {
@@ -82,6 +85,8 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       staleSeconds: env.STALE_MESSAGE_SECONDS,
       reopenHours: env.CASE_REOPEN_HOURS,
       resumeCommand: env.AI_RESUME_COMMAND,
+      version,
+      transportStats: () => ({ reconnects: transport.reconnectCount, lastUpdateAt: transport.lastUpdateAt }),
     },
   );
   // ON/OFF survives every kind of restart: the store (Postgres) or, for the in-memory store, the

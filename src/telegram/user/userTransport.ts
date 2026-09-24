@@ -140,6 +140,13 @@ export class UserTransport implements Transport, ReadStateApi {
   get ownChatId(): string {
     return this.selfId;
   }
+  /** Watchdog reconnects since start: more than a handful means another connection keeps taking this session's updates. */
+  get reconnectCount(): number {
+    return this.reconnects;
+  }
+  get lastUpdateAt(): Date {
+    return new Date(this.lastEventAt);
+  }
   /** Support chat as Telegram reports it on incoming messages ("marked" id, e.g. -5207771735). */
   private supportMarkedId?: string;
   private supportPeer?: Api.TypeInputPeer;
@@ -210,6 +217,11 @@ export class UserTransport implements Transport, ReadStateApi {
     client.addEventHandler((ev: NewMessageEvent) => {
       this.onEvent(ev, handlers).catch((err) => this.handleClientError(err, 'event handler failed'));
     }, new NewMessage({}));
+
+    // Any update at all proves the stream is alive (reads, typing, groups, channels — not only messages).
+    client.addEventHandler(() => {
+      this.lastEventAt = Date.now();
+    }, new Raw({}));
 
     // Someone read a private chat on this account (phone, desktop): remember how far.
     client.addEventHandler((update: Api.TypeUpdate) => {
@@ -397,7 +409,7 @@ export class UserTransport implements Transport, ReadStateApi {
     if (!client || !this.running) return 'ok';
     const state = await client.invoke(new Api.updates.GetState());
     const interval = this.opts.updateWatchIntervalMs ?? 60_000;
-    const silent = Date.now() - this.lastEventAt >= interval;
+    const silent = Date.now() - this.lastEventAt >= 2 * interval; // two quiet checks in a row, not one
     const advanced = this.lastPts !== undefined && state.pts > this.lastPts;
     this.lastPts = state.pts;
     if (!(advanced && silent)) return 'ok';

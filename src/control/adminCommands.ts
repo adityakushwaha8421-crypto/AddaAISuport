@@ -12,9 +12,9 @@ export interface AdminCommandEvent {
   owner?: boolean;
 }
 
-export type AdminCommand = 'boton' | 'botoff' | 'restart';
+export type AdminCommand = 'boton' | 'botoff' | 'restart' | 'status';
 
-const COMMAND = /^\/(boton|botoff|restart)(?:@\w+)?\s*$/i;
+const COMMAND = /^\/(boton|botoff|restart|status)(?:@\w+)?\s*$/i;
 
 export const REPLIES = {
   on: '✅ Bot is ON',
@@ -33,7 +33,7 @@ export function parseAdminCommand(text: string | undefined): AdminCommand | unde
 }
 
 /**
- * /boton, /botoff, /restart — for the authorised admin Telegram ids (ADMIN_TELEGRAM_IDS) and the
+ * /boton, /botoff, /restart, /status — for the authorised admin Telegram ids (ADMIN_TELEGRAM_IDS) and the
  * account owner typing in Saved Messages. Anyone else typing the same words is a customer whose
  * message goes through the normal pipeline and changes nothing.
  */
@@ -49,6 +49,8 @@ export class AdminCommands {
       log: Logger;
       /** Provided by the supervisor: pull the latest code, build, restart, then confirm to `chatId`. */
       onRestart?: (reply: { chatId: string }) => void;
+      /** What `/status` replies with. */
+      status?: () => Promise<string>;
     },
   ) {
     this.admins = new Set([...o.admins].map((a) => a.trim()).filter(Boolean));
@@ -79,6 +81,9 @@ export class AdminCommands {
         // Nothing prepared before this moment may go out later: unsent replies are withdrawn, not paused.
         await this.o.outbox?.cancelPending('bot_off').catch((err) => log.warn({ err }, 'could not withdraw the unsent replies'));
         await this.reply(ev.chatId, REPLIES.off);
+        break;
+      case 'status':
+        await this.reply(ev.chatId, this.o.status ? await this.o.status() : `${(await this.o.botSwitch.isOnNow()) ? REPLIES.on : REPLIES.off}`);
         break;
       case 'restart':
         if (!this.o.onRestart) {
