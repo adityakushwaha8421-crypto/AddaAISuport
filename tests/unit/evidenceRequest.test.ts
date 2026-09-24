@@ -190,3 +190,44 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
     expect(await app.confirmations.onExportMessage({ messageId: 5, text: confirmation('6135570708') })).toBe('solved'); // not lost: told once ON
   });
 });
+
+describe('deposit: asked once, across restarts too', () => {
+  it('a process restart does not ask the same customer again (the ledger is on disk with the in-memory store)', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'requests-'));
+    const file = join(dir, 'requests.json');
+    try {
+      const boot = () => {
+        const s = new MemoryStore({ requestsFile: file });
+        const tr = new FakeTransport();
+        const a = assemble({ store: s, transport: tr, log: silentLogger, clock: () => NOW }, { adminIds: [ADMIN], supportChatId: SUPPORT, exportChatId: EXPORT_BOT });
+        return { s, tr, a };
+      };
+      const first = boot();
+      expect(await first.a.onMessage(first.tr.inbound('6135570777', 'deposit nahi hua', [], NOW))).toBe('requested');
+      // The process restarts: new store, new transport, only the file survives.
+      const second = boot();
+      second.tr.nextId('6135570777'); // the customer's earlier message id is taken
+      for (const m of ['deposit nahi hua', 'paise add nahi hue abhi tak', 'hello?', 'kitna time lagega']) {
+        expect(await second.a.onMessage(second.tr.inbound('6135570777', m, [], NOW)), m).toBe('already_requested');
+      }
+      expect(second.tr.sent).toHaveLength(0);
+      // Solved by the team → the ledger closes it, and a later new deposit problem gets its own request.
+      await second.a.onExportMessage({ messageId: 1, text: '✅ PAYMENT CONFIRMED\n👤 Customer: X (User ID: 6135570777)' });
+      const third = boot();
+      expect(await third.a.onMessage(third.tr.inbound('6135570777', 'deposit phir se nahi hua', [], new Date(NOW.getTime() + 60_000)))).toBe('requested');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('no reminder exists: days of silence from the customer, then any message — still nothing', async () => {
+    build();
+    expect(await say('quiet', 'deposit nahi hua')).toBe('requested');
+    advance(47 * 60); // just inside the case window
+    for (const m of ['?', 'hello', 'koi hai', 'deposit ka kya hua', 'abhi tak nahi hua']) expect(await say('quiet', m), m).toBe('already_requested');
+    expect(repliesTo('quiet')).toHaveLength(1);
+  });
+});

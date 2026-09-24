@@ -88,7 +88,9 @@ same words are an ordinary customer message: stored, not acted on, not answered.
 - `messages` — every inbound customer message (text/caption after secret scrubbing, media
   references, reply-to id, Telegram date) and every outbound one (`meta.kind`).
 - `evidence_requests` — one row per case: chat, user, issue type, language, status
-  (`sending` → `sent` → `solved`), the request's Telegram id.
+  (`sending` → `sent` → `solved`), the request's Telegram id. With `STORE=memory` this ledger is
+  kept on disk (`REQUESTS_STATE_FILE`, `data/requests.json`), so a restart never leads to a
+  customer being asked a second time.
 - `settings` — `bot.enabled`, `bot.enabledAt`, and one `payment_confirmed:…` key per payment told.
 
 Messages from the account's own contacts (`TELEGRAM_IGNORE_CONTACTS=true`), from bots, from

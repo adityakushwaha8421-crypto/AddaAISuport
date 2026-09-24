@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
 
 /** Deep copy so callers can't mutate stored state without saving (mirrors DB semantics). */
@@ -28,21 +30,45 @@ class MemoryUsers implements UserRepo {
   }
 }
 
+/**
+ * The ledger of evidence requests. "Ask once" must survive a process restart even without a
+ * database, so with a `file` every change is written to disk and read back at start-up; a request
+ * caught mid-send by a crash is dropped on load (it may not have gone out — the next message asks).
+ */
 class MemoryRequests implements EvidenceRequestRepo {
   readonly rows: EvidenceRequest[] = [];
+  constructor(private readonly file?: string) {
+    if (!file) return;
+    try {
+      const raw = JSON.parse(readFileSync(file, 'utf8')) as Array<Omit<EvidenceRequest, 'createdAt' | 'solvedAt'> & { createdAt: string; solvedAt?: string }>;
+      for (const r of raw) if (r.status !== 'sending') this.rows.push({ ...r, createdAt: new Date(r.createdAt), solvedAt: r.solvedAt ? new Date(r.solvedAt) : undefined });
+    } catch {
+      // no file yet, or unreadable: start empty
+    }
+  }
+  private save() {
+    if (!this.file) return;
+    mkdirSync(dirname(this.file), { recursive: true });
+    const tmp = `${this.file}.tmp`;
+    writeFileSync(tmp, JSON.stringify(this.rows));
+    renameSync(tmp, this.file);
+  }
   async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }) {
     const { createdAt, ...rest } = r;
     const row: EvidenceRequest = { ...rest, id: randomUUID(), status: 'sending', createdAt: createdAt ?? new Date() };
     this.rows.push(row);
+    this.save();
     return clone(row);
   }
   async markSent(id: string, telegramMessageId: number) {
     const r = this.rows.find((x) => x.id === id);
     if (r) Object.assign(r, { status: 'sent', telegramMessageId });
+    this.save();
   }
   async remove(id: string) {
     const i = this.rows.findIndex((x) => x.id === id);
     if (i >= 0) this.rows.splice(i, 1);
+    this.save();
   }
   async listOpen(chatId: string) {
     return clone(this.rows.filter((r) => r.chatId === chatId && r.status !== 'solved').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
@@ -50,6 +76,7 @@ class MemoryRequests implements EvidenceRequestRepo {
   async markSolved(userId: string, at: Date) {
     let n = 0;
     for (const r of this.rows) if (r.userId === userId && r.status !== 'solved') Object.assign(r, { status: 'solved', solvedAt: at }), n++;
+    if (n) this.save();
     return n;
   }
 }
@@ -96,7 +123,11 @@ export class MemoryStore implements Store {
   settings = new MemorySettings();
   users = new MemoryUsers();
   messages = new MemoryMessages();
-  requests = new MemoryRequests();
+  requests: MemoryRequests;
+  /** `requestsFile`: keep the evidence-request ledger on disk so "ask once" survives a restart. */
+  constructor(opts: { requestsFile?: string } = {}) {
+    this.requests = new MemoryRequests(opts.requestsFile);
+  }
   async healthy() {
     return true;
   }
