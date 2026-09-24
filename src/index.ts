@@ -1,6 +1,11 @@
+import { spawn } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import dotenv from 'dotenv';
 import { assemble, type App } from './app.js';
+import { REPLIES } from './control/adminCommands.js';
 import { Supervisor, type Booted, type BootContext } from './control/supervisor.js';
+import { updateFromGit } from './control/updater.js';
 import { loadEnv, secretValues, type Env } from './config/env.js';
 import { DisabledLlm, type LlmClient } from './llm/client.js';
 import { OpenAiLlm } from './llm/openai.js';
@@ -27,6 +32,22 @@ function createTransport(env: Env, log: Logger): UserTransport {
 }
 
 dotenv.config();
+
+/** The restart confirmation travels from the old process to the new one through a small file next to the bot state. */
+const confirmationFile = (stateFile: string) => join(dirname(stateFile), 'restart-confirm.json');
+function writeConfirmation(stateFile: string, c: { chatId: string; text: string }) {
+  mkdirSync(dirname(stateFile), { recursive: true });
+  writeFileSync(confirmationFile(stateFile), JSON.stringify(c));
+}
+function readConfirmation(stateFile: string): { chatId: string; text: string } | undefined {
+  try {
+    const c = JSON.parse(readFileSync(confirmationFile(stateFile), 'utf8')) as { chatId: string; text: string };
+    rmSync(confirmationFile(stateFile), { force: true });
+    return c.chatId ? c : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** One full start of the agent. The supervisor calls it at process start and again on /restart. */
 async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
@@ -83,6 +104,12 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     { llm: llm.available, port: env.HTTP_PORT, botOn: await app.botSwitch.current(), admins: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').filter(Boolean).length, workflows: ['evidence_request', 'payment_confirmed'] },
     'agent running: one evidence request per deposit/withdrawal case, one solved note per confirmed payment, nothing else',
   );
+  // Started by /restart: the previous process pulled and built the code and handed over to us. Tell the admin.
+  const pending = readConfirmation(env.BOT_STATE_FILE);
+  if (pending) {
+    await transport.sendText(pending.chatId, pending.text || REPLIES.restarted).catch((err) => log.warn({ err }, 'restarted, but the confirmation could not be sent'));
+    log.info({ chat: pending.chatId }, 'restart confirmed to the admin');
+  }
 
   let stopped = false;
   return {
@@ -104,13 +131,27 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
 async function main() {
   const first = loadEnv();
   const rootLog = createLogger({ level: first.LOG_LEVEL, pretty: first.LOG_PRETTY, file: first.LOG_FILE });
-  // One copy of the agent per account: the lock is taken once per process; an in-process /restart keeps it.
-  acquireInstanceLock(first.INSTANCE_LOCK_FILE);
+  // One copy of the agent per account. /restart releases the lock right before handing over to the new process.
+  const releaseLock = acquireInstanceLock(first.INSTANCE_LOCK_FILE);
 
   const supervisor = new Supervisor({
     boot: (ctx) => boot(ctx, rootLog),
     log: rootLog.child({ mod: 'supervisor' }),
     reloadEnv: () => dotenv.config({ override: true }),
+    update: () => updateFromGit({ cwd: process.cwd(), log: rootLog.child({ mod: 'updater' }) }),
+    releaseLock,
+    respawn: (confirm) => {
+      writeConfirmation(first.BOT_STATE_FILE, confirm);
+      if (first.RESTART_MODE === 'exit') {
+        rootLog.info('restart: exiting for the process manager to start the updated code');
+        process.exit(0);
+      }
+      // Same node binary, same entry file, same working directory and log destination; detached so it outlives us.
+      const child = spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), env: process.env, detached: true, stdio: 'inherit' });
+      child.unref();
+      rootLog.info({ pid: child.pid }, 'restart: new process started with the updated code; exiting');
+      process.exit(0);
+    },
   });
   process.on('SIGINT', () => void supervisor.shutdown('SIGINT'));
   process.on('SIGTERM', () => void supervisor.shutdown('SIGTERM'));

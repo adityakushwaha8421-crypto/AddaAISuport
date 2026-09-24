@@ -77,7 +77,7 @@ describe('AdminCommands', () => {
     // the owner in Saved Messages needs no listing
     expect(await admin.handle({ chatId: 'me', messageId: 4, fromUserId: 'me', text: '/restart', owner: true })).toBe(true);
     expect(restart).toHaveBeenCalledWith({ chatId: 'me' });
-    expect(t.sent).toHaveLength(2); // the restart confirmation comes from the supervisor, after the restart
+    expect(t.sent.at(-1)).toEqual({ chatId: 'me', text: REPLIES.updating }); // the success confirmation comes later, from the new process
 
     // ordinary text from an admin is not a command
     expect(await admin.handle({ chatId: '111', messageId: 5, fromUserId: '111', text: 'hello' })).toBe(false);
@@ -135,6 +135,37 @@ describe('Supervisor: /restart', () => {
     await Promise.all([sup.restart({ chatId: 'x' }), sup.restart({ chatId: 'x' })]);
     expect(n).toBe(3); // first boot, one failed attempt, one good one
     expect(log.filter((l) => l.includes(':send:'))).toHaveLength(1);
+  });
+
+  it('with an updater and a respawn hook: update, stop, release the lock, hand over — the confirmation carries the commit', async () => {
+    const log: string[] = [];
+    const sup = new Supervisor({
+      boot: async () => booted(log, 'a', true),
+      log: silentLogger,
+      update: async () => (log.push('update'), { before: 'abc1234', after: 'def5678', files: ['src/app.ts', 'README.md'], installed: false }),
+      releaseLock: () => log.push('release-lock'),
+      respawn: (c) => log.push(`respawn:${c.chatId}:${c.text.replace(/\n/g, ' | ')}`),
+    });
+    await sup.start();
+    await sup.restart({ chatId: 'admin' });
+    expect(log).toEqual(['update', 'a:stop', 'release-lock', 'respawn:admin:✅ Bot restarted successfully. | Code: def5678 (2 files updated from abc1234)']);
+    expect(sup.running).toBe(false);
+  });
+
+  it('when the update fails, nothing restarts: the running agent stays and the admin is told why', async () => {
+    const log: string[] = [];
+    const sup = new Supervisor({
+      boot: async () => booted(log, 'a', true),
+      log: silentLogger,
+      update: async () => {
+        throw new Error('git pull failed: fatal: unable to access origin');
+      },
+      respawn: () => log.push('respawn'),
+    });
+    await sup.start();
+    await sup.restart({ chatId: 'admin' });
+    expect(log).toEqual(['a:send:admin:⚠️ Update failed.\ngit pull failed: fatal: unable to access origin\nThe bot is still running on the previous code.']);
+    expect(sup.running).toBe(true);
   });
 
   it('shutdown stops the agent and exits once', async () => {

@@ -19,8 +19,11 @@ const COMMAND = /^\/(boton|botoff|restart)(?:@\w+)?\s*$/i;
 export const REPLIES = {
   on: '✅ Bot is ON',
   off: '⛔ Bot is OFF',
+  updating: '🔄 Pulling the latest code from GitHub and restarting…',
   restarted: '✅ Bot restarted successfully.',
-  restartUnavailable: '⚠️ Restart is not available in this process (it runs jobs only).',
+  updateFailed: '⚠️ Update failed.',
+  stillRunning: 'The bot is still running on the previous code.',
+  restartUnavailable: '⚠️ Restart is not available in this process.',
 } as const;
 
 /** The command in a message, if it is one — whoever sent it. */
@@ -44,7 +47,7 @@ export class AdminCommands {
       /** The raw transport: these replies must go out precisely while the bot is OFF. */
       transport: Pick<Transport, 'sendText'>;
       log: Logger;
-      /** Provided by the supervisor: perform a safe restart, then send the success reply to `chatId`. */
+      /** Provided by the supervisor: pull the latest code, build, restart, then confirm to `chatId`. */
       onRestart?: (reply: { chatId: string }) => void;
     },
   ) {
@@ -82,7 +85,8 @@ export class AdminCommands {
           await this.reply(ev.chatId, REPLIES.restartUnavailable);
           break;
         }
-        log.info('restart requested by an admin');
+        log.info('update + restart requested by an admin');
+        await this.reply(ev.chatId, REPLIES.updating);
         this.o.onRestart({ chatId: ev.chatId });
         break;
     }

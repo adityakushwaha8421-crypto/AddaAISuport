@@ -33,6 +33,12 @@ const envSchema = z.object({
   INSTANCE_LOCK_FILE: z.string().trim().min(1).default('secrets/agent.lock'),
   /** Mirror of the ON/OFF switch so OFF survives a full restart even with STORE=memory. */
   BOT_STATE_FILE: z.string().trim().min(1).default('data/bot-state.json'),
+  /**
+   * How /restart brings the updated code up after `git pull` + build. respawn (default): this process
+   * starts a fresh one and exits (plain `npm start`, nohup). exit: this process just exits with code 0
+   * and a process manager (systemd, docker restart policy, pm2) starts it again.
+   */
+  RESTART_MODE: z.enum(['respawn', 'exit']).default('respawn'),
   /** Comma-separated user ids / @usernames. When set, ONLY these chats are treated as customers. */
   TELEGRAM_ALLOWED_USERS: optionalString,
   /** Personal account: people saved in the account's contacts (friends, family, team) are not customers. */
