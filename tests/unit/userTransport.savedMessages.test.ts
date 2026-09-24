@@ -70,7 +70,7 @@ describe('export bot chat routing', () => {
 
 describe('update-stream watchdog', () => {
   const withClient = (pts: number[]) => {
-    const t = new UserTransport({ apiId: 1, apiHash: 'x', sessions: new MemorySessionStore(), log: silentLogger, updateWatchIntervalMs: 10 });
+    const t = new UserTransport({ apiId: 1, apiHash: 'x', sessions: new MemorySessionStore(), log: silentLogger, updateWatchIntervalMs: 2000, ownSendGraceMs: 1 });
     const calls: string[] = [];
     let i = 0;
     const client = {
@@ -81,14 +81,12 @@ describe('update-stream watchdog', () => {
     Object.assign(t as unknown as Record<string, unknown>, { client, running: true });
     return { t: t as unknown as { checkUpdateStream(): Promise<string>; onEvent(ev: unknown, h: unknown): Promise<void> }, calls };
   };
-  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   it('reconnects when Telegram\'s state advanced but no update arrived', async () => {
     const { t, calls } = withClient([100, 100, 105]);
+    (t as unknown as { lastEventAt: number }).lastEventAt = Date.now() - 5000; // nothing received for a while
     expect(await t.checkUpdateStream()).toBe('ok'); // first look: nothing to compare with
-    await wait(15);
     expect(await t.checkUpdateStream()).toBe('ok'); // pts unchanged: quiet account, stream fine
-    await wait(15);
     expect(await t.checkUpdateStream()).toBe('reconnected'); // pts moved, we saw nothing
     expect(calls).toEqual(['disconnect', 'connect']);
   });
