@@ -92,7 +92,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     store: c.store, transport, botSwitch, llm: c.llm, readState: c.readState, log: c.log.child({ mod: 'evidence-request' }), clock: c.clock,
     staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, takeoverHours: cfg.takeoverHours,
   });
-  const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
+  const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, directory: c.transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
   // Folder housekeeping edits the account's own folders, never a chat: the raw transport, ON or OFF.
   const folders = new HumanReplyFolders({ transport: c.transport, titles: cfg.humanReplyFolders ?? [], log: c.log.child({ mod: 'folders' }) });
   // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.

@@ -44,7 +44,17 @@ export interface Transport {
    * Returns the titles it left. Telegram rejects an empty folder, so removing the last chat deletes it.
    */
   removeChatFromFolders?(chatId: string, titles: string[]): Promise<string[]>;
+  /** The Telegram profile of this user id, as the account sees it; undefined when Telegram does not know them to this account. */
+  userProfile?(userId: string): Promise<TelegramUserProfile | undefined>;
   healthy(): boolean;
+}
+
+/** What Telegram shows for a user: used to confirm the right customer before the solved note. */
+export interface TelegramUserProfile {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
 }
 
 /** Telegram read state of customer chats on the account. */

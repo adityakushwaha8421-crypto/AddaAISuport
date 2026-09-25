@@ -4,7 +4,7 @@ import { NewMessage, Raw, type NewMessageEvent } from 'telegram/events/index.js'
 import { LogLevel } from 'telegram/extensions/Logger.js';
 import type { Logger } from 'pino';
 import type { InboundMessage, MediaKind, MediaRef, ReplySnapshot } from '../../domain/messages.js';
-import { TELEGRAM_TEXT_LIMIT, type ReadStateApi, type SendOptions, type Transport, type TransportHandlers } from '../transport.js';
+import { TELEGRAM_TEXT_LIMIT, type ReadStateApi, type SendOptions, type TelegramUserProfile, type Transport, type TransportHandlers } from '../transport.js';
 import { KeyedBuckets, TokenBucket } from '../../util/rateLimiter.js';
 import { findFolder, folderHas, folderList, folderTitle, folderWithoutChat } from './folders.js';
 import { ReadTracker } from './readState.js';
@@ -451,6 +451,19 @@ export class UserTransport implements Transport, ReadStateApi {
       flying.delete(tracked);
       if (!flying.size) this.inFlight.delete(chatId);
     }
+  }
+
+  async userProfile(userId: string): Promise<TelegramUserProfile | undefined> {
+    const client = this.requireClient();
+    let entity: unknown;
+    try {
+      entity = await this.withEntityRetry(() => client.getEntity(bigInt(userId)));
+    } catch (err) {
+      this.opts.log.warn({ err, userId }, 'telegram does not know this user id to the account');
+      return undefined;
+    }
+    if (!(entity instanceof Api.User)) return undefined;
+    return { id: entity.id.toString(), firstName: entity.firstName, lastName: entity.lastName, username: entity.username };
   }
 
   async removeChatFromFolders(chatId: string, titles: string[]): Promise<string[]> {

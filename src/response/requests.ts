@@ -34,7 +34,41 @@ export function greetingText(lang: Language): string {
   );
 }
 
-/** After the export bot's PAYMENT CONFIRMED: the agreed note, never paraphrased. */
-export function solvedText(lang: Language): string {
-  return pick(lang, 'Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏', 'Sir, your issue has been solved. Sorry for the inconvenience. 🙏', 'सर, आपका इश्यू सॉल्व हो गया है। असुविधा के लिए माफ़ी। 🙏');
+export interface SolvedDetails {
+  /** The customer's Telegram display name; "Sir" when unknown. */
+  name?: string;
+  /** The confirmed amount as the export bot printed it, e.g. "₹2,999.01". */
+  amount?: string;
+  issue: IssueType;
+}
+
+/** After the export bot's PAYMENT CONFIRMED: the solved note, with the customer's name and the confirmed amount. */
+export function solvedText(lang: Language, d: SolvedDetails): string {
+  const name = d.name?.trim() || pick(lang, 'Sir', 'Sir', 'सर');
+  const issue = d.issue === 'withdrawal' ? pick(lang, 'withdrawal', 'withdrawal', 'विड्रॉल') : pick(lang, 'deposit', 'deposit', 'डिपॉज़िट');
+  const settled = d.issue === 'withdrawal' ? pick(lang, 'transfer/confirm', 'transferred/confirmed', 'ट्रांसफर/कन्फर्म') : pick(lang, 'credit/confirm', 'credited/confirmed', 'क्रेडिट/कन्फर्म');
+  const title = d.issue === 'withdrawal' ? pick(lang, 'Withdrawal Issue Resolved!', 'Withdrawal Issue Resolved!', 'विड्रॉल इश्यू सॉल्व हो गया!') : pick(lang, 'Deposit Issue Resolved!', 'Deposit Issue Resolved!', 'डिपॉज़िट इश्यू सॉल्व हो गया!');
+  const body = d.amount
+    ? pick(
+        lang,
+        `Aapka ${issue} issue successfully resolve ho gaya hai. Aapka amount ${d.amount} successfully ${settled} ho gaya hai. 💰✅`,
+        `Your ${issue} issue has been successfully resolved. Your amount of ${d.amount} has been ${settled} successfully. 💰✅`,
+        `आपका ${issue} इश्यू सफलतापूर्वक सॉल्व हो गया है। आपका अमाउंट ${d.amount} सफलतापूर्वक ${settled} हो गया है। 💰✅`,
+      )
+    : pick(
+        lang,
+        `Aapka ${issue} issue successfully resolve ho gaya hai aur payment confirm ho gaya hai. 💰✅`,
+        `Your ${issue} issue has been successfully resolved and the payment has been confirmed. 💰✅`,
+        `आपका ${issue} इश्यू सफलतापूर्वक सॉल्व हो गया है और पेमेंट कन्फर्म हो गया है। 💰✅`,
+      );
+  return [
+    `🎉 ${title}`,
+    '',
+    pick(lang, `Hello ${name} 👋`, `Hello ${name} 👋`, `नमस्ते ${name} 👋`),
+    '',
+    body,
+    '',
+    pick(lang, 'Aapke patience ke liye thank you, Sir. 🙏', 'Thank you for your patience, Sir. 🙏', 'आपके धैर्य के लिए धन्यवाद, सर। 🙏'),
+    pick(lang, 'Sorry for the inconvenience. 💙', 'Sorry for the inconvenience. 💙', 'असुविधा के लिए माफ़ी। 💙'),
+  ].join('\n');
 }

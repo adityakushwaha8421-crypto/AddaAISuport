@@ -1,5 +1,5 @@
 import type { InboundMessage, MediaRef } from '../../src/domain/messages.js';
-import type { ReadStateApi, SendOptions, Transport, TransportHandlers } from '../../src/telegram/transport.js';
+import type { ReadStateApi, SendOptions, TelegramUserProfile, Transport, TransportHandlers } from '../../src/telegram/transport.js';
 
 export const ADMIN = '500000001';
 export const SUPPORT = '-100999';
@@ -57,6 +57,11 @@ export class FakeTransport implements Transport, ReadStateApi {
     this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), id]);
     return id;
   }
+  /** Telegram's profiles: whoever wrote to the account is known; tests may set others. */
+  readonly profiles = new Map<string, TelegramUserProfile>();
+  async userProfile(userId: string) {
+    return this.profiles.get(userId);
+  }
   /** The account's chat folders: title → chat ids. */
   readonly folders = new Map<string, Set<string>>();
   readonly folderCalls: Array<{ chatId: string; titles: string[] }> = [];
@@ -89,7 +94,9 @@ export class FakeTransport implements Transport, ReadStateApi {
   }
   /** Build an inbound customer message with the next id in that chat. */
   inbound(userId: string, text?: string, media: MediaRef[] = [], date = NOW): InboundMessage {
-    return { chatId: userId, userId, messageId: this.nextId(userId), date, text, media, sender: { firstName: 'C' } };
+    const sender: Omit<TelegramUserProfile, 'id'> = this.profiles.get(userId) ?? { firstName: 'P', lastName: 'Kumar' };
+    if (!this.profiles.has(userId)) this.profiles.set(userId, { id: userId, ...sender });
+    return { chatId: userId, userId, messageId: this.nextId(userId), date, text, media, sender: { firstName: sender.firstName, lastName: sender.lastName, username: sender.username } };
   }
 }
 

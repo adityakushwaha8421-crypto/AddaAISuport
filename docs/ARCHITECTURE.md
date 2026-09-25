@@ -34,8 +34,10 @@ workflows/evidenceRequest.ts (per customer message, in this order; any other out
   not read by a human? → bot_enabled once more → requests.create('sending') → guarded sendText(kind
   'evidence_request') → markSent + outbound message row. A failed send removes the row.
 workflows/paymentConfirmed.ts: PAYMENT CONFIRMED with a User ID → bot_enabled → dedupe key in settings
-  (order id, else a fingerprint of the text) → guarded sendText(kind 'payment_confirmed') in the
-  user's language → requests.markSolved.
+  (order id, else a fingerprint of the text) → the Telegram profile behind the User ID (raw
+  transport userProfile, else the stored customer) must match the customer/username the confirmation
+  names → guarded sendText(kind 'payment_confirmed'): Telegram name + confirmed amount, deposit or
+  withdrawal wording from the open case, in the user's language → requests.markSolved.
 ```
 
 Boot (`index.ts`): env → logger (with secret scrubbing) → store → OpenAI client (unused) →

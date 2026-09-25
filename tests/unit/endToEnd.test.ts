@@ -50,7 +50,7 @@ describe('end to end', () => {
     // The team confirms through the export bot.
     minutes(30);
     await app.onExportMessage({ messageId: 1, text: confirmation(u) });
-    expect(t.sent.map((s) => s.text)).toEqual([greetingText('hinglish'), requestText('deposit', 'hinglish'), solvedText('hinglish')]);
+    expect(t.sent.map((s) => s.text)).toEqual([greetingText('hinglish'), requestText('deposit', 'hinglish'), solvedText('hinglish', { name: 'P Kumar', amount: '₹500', issue: 'deposit' })]);
     expect(t.sent[2]).toMatchObject({ chatId: u, kind: 'payment_confirmed' });
     // Same confirmation again, a thank-you, a question: nothing.
     await app.onExportMessage({ messageId: 2, text: confirmation(u) });
@@ -130,7 +130,7 @@ describe('end to end', () => {
     expect(await p.app.onMessage(p.t.inbound('9000000001', 'still nothing in my wallet', [], now))).toBe('already_requested');
     expect(await p.app.onMessage(p.t.inbound('9000000002', 'withdrawal nahi aaya', [], now))).toBe('human');
     await p.app.onExportMessage({ messageId: 1, text: confirmation('9000000001') });
-    expect(p.t.sent.map((s) => s.text)).toEqual([solvedText('english')]); // language remembered across the restart
+    expect(p.t.sent.map((s) => s.text)).toEqual([solvedText('english', { name: 'P Kumar', amount: '₹500', issue: 'deposit' })]); // language remembered across the restart
   });
 
   it('/botoff: nothing goes out — not a request, not a solved note; /boton: new messages only', async () => {
@@ -138,6 +138,7 @@ describe('end to end', () => {
     await app.onMessage(t.inbound(ADMIN, '/botoff', [], now));
     expect(t.sent.at(-1)).toMatchObject({ chatId: ADMIN, text: REPLIES.off });
     expect(await app.onMessage(t.inbound('9100000001', 'deposit nahi hua', [], now))).toBe('bot_off');
+    t.profiles.set('9100000002', { id: '9100000002', firstName: 'P', lastName: 'Kumar' });
     await app.onExportMessage({ messageId: 1, text: confirmation('9100000002') });
     expect(customerSends(t)).toHaveLength(0);
     await app.onMessage(t.inbound(ADMIN, '/boton', [], now));

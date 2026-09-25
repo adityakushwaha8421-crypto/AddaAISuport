@@ -160,7 +160,7 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
     await say('6135570708', 'I deposited money but my wallet does not show it');
     await say('6135570709', 'deposit nahi hua');
     await app.onExportMessage({ messageId: 1, text: confirmation('6135570708', '\n\n🧾 Order: ILLUN-178923603882201') });
-    expect(repliesTo('6135570708')).toEqual([requestText('deposit', 'english'), solvedText('english')]);
+    expect(repliesTo('6135570708')).toEqual([requestText('deposit', 'english'), solvedText('english', { name: 'P Kumar', amount: '₹500', issue: 'deposit' })]);
     expect(repliesTo('6135570709')).toHaveLength(1); // only their own request
     expect(await store.requests.listOpen('6135570708')).toHaveLength(0);
     // Re-sent, re-worded, same order → nothing more.
@@ -172,9 +172,10 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
   });
 
   it('works for a customer with no stored conversation (exact User ID), dedupes by text when there is no order line', async () => {
+    t.profiles.set('7777777001', { id: '7777777001', firstName: 'Pankaj', lastName: 'Kumar' }); // Telegram knows them even though nothing is stored
     const text = confirmation('7777777001');
     expect(await app.confirmations.onExportMessage({ messageId: 10, text })).toBe('solved');
-    expect(t.sent).toEqual([{ chatId: '7777777001', text: solvedText('hinglish'), kind: 'payment_confirmed', replyTo: undefined }]);
+    expect(t.sent).toEqual([{ chatId: '7777777001', text: solvedText('hinglish', { name: 'Pankaj Kumar', amount: '₹500', issue: 'deposit' }), kind: 'payment_confirmed', replyTo: undefined }]);
     expect(await app.confirmations.onExportMessage({ messageId: 11, text })).toBe('duplicate');
     expect(await app.confirmations.onExportMessage({ messageId: 12, text: text.replace('₹500', '₹350') })).toBe('solved'); // a different payment
     expect(t.sent).toHaveLength(2);
@@ -185,6 +186,7 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
     expect(await app.confirmations.onExportMessage({ messageId: 2, text: 'Files received 👍' })).toBe('ignored');
     expect(await app.confirmations.onExportMessage({ messageId: 3, text: '⚠️ MANUAL REVIEW NEEDED\nUser ID: 6135570708' })).toBe('ignored');
     await app.botSwitch.set(false);
+    t.profiles.set('6135570708', { id: '6135570708', firstName: 'P', lastName: 'Kumar' });
     expect(await app.confirmations.onExportMessage({ messageId: 4, text: confirmation('6135570708') })).toBe('bot_off');
     expect(t.sent).toHaveLength(0);
     await app.botSwitch.set(true);
@@ -216,7 +218,7 @@ describe('deposit: asked once, across restarts too', () => {
       }
       expect(second.tr.sent).toHaveLength(0);
       // Solved by the team → the ledger closes it, and a later new deposit problem gets its own request.
-      await second.a.onExportMessage({ messageId: 1, text: '✅ PAYMENT CONFIRMED\n👤 Customer: X (User ID: 6135570777)' });
+      await second.a.onExportMessage({ messageId: 1, text: '✅ PAYMENT CONFIRMED\n👤 Customer: P Kumar (User ID: 6135570777)\n💰 Amount: ₹500' });
       const third = boot();
       expect(await third.a.onMessage(third.tr.inbound('6135570777', 'deposit phir se nahi hua', [], new Date(NOW.getTime() + 60_000)))).toBe('requested');
     } finally {

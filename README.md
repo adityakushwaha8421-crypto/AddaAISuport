@@ -15,8 +15,23 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    silent in that case: no acknowledgements, reminders, status updates or follow-ups, whatever the
    customer writes or sends. The human team handles everything from there.
 2. **One solved note per confirmed payment.** When the export bot sends `✅ PAYMENT CONFIRMED`
-   naming a `User ID`, exactly that customer is told once, in their language:
-   *"Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏"*
+   naming a `User ID`, exactly that customer is told once, in their language, by their Telegram
+   name and with the confirmed amount from the confirmation:
+
+   > 🎉 Deposit Issue Resolved!
+   >
+   > Hello P Kumar 👋
+   >
+   > Your deposit issue has been successfully resolved. Your amount of ₹2,999.01 has been credited/confirmed successfully. 💰✅
+   >
+   > Thank you for your patience, Sir. 🙏
+   > Sorry for the inconvenience. 💙
+
+   A withdrawal case gets the withdrawal wording; Hinglish and Hindi customers get the same note
+   in their language. Before sending, the customer the confirmation names (name, `@username`) is
+   checked against the Telegram user behind that User ID: a mismatch, or a User ID Telegram does
+   not know to this account, sends nothing and is logged. Without an amount line the note says the
+   payment is confirmed, without a figure.
 
 3. **One greeting per fresh conversation.** A message that is only a greeting ("Hi", "Hello",
    "Hlo", "Namaste", "Good morning sir"…) is answered with one greeting, in the customer's language,
@@ -134,7 +149,8 @@ TEST_DATABASE_URL=postgres://… npm test   # also run the storage contract agai
 - `tests/unit/evidenceRequest.test.ts` — the workflow end to end: deposit/withdrawal read from
   natural phrasing in three languages, one request then silence for every follow-up, a second
   different issue, human takeover and its expiry, read-by-human, `/botoff`, stale messages, failed
-  sends, and the PAYMENT CONFIRMED note (exact user, once per payment, language, no User ID → nobody).
+  sends, and the PAYMENT CONFIRMED note (exact user, once per payment, language, name and amount,
+  identity check, no User ID → nobody).
 - `tests/unit/moneyDirection.test.ts` — the phrasing tables for the direction scorer.
 - `tests/unit/receiveOnly.test.ts` — everything else is stored and gets **zero** messages; admin
   commands still answer the admin; the guarded transport refuses any other customer send.
