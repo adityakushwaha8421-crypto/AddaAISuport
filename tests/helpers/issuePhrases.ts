@@ -53,6 +53,9 @@ export const OTHER = [
   // names a direction, reports no problem: a question or a request (a customer asking for a higher withdrawal limit got the withdrawal request)
   'Increase my withdrawal amount in app', 'withdrawal limit badhao', 'minimum withdrawal kitna hai', 'deposit kaise kare', 'how to withdraw money', 'maine withdrawal kiya',
   'withdrawal time kya hai', 'deposit bonus milega kya', 'deposit offer kya hai', 'withdrawal', 'deposit',
+  // bank ACCOUNT problems, no money in the sentence (a customer who could not verify their bank account got the withdrawal request)
+  'Unable to do bank account verification as it is showing bank account is already exist, but have not added my bank account',
+  'bank account verification nahi ho raha', 'bank account add nahi ho raha', 'my bank account is not verified', 'bank details galat hai', 'kyc me bank account reject ho gaya',
 ];
 
 /** Money is the topic, but neither side is named: with no context the agent must not guess. */

@@ -45,6 +45,12 @@ const APP = String.raw`(?:app|application|game|id|adda|fantasy|wallet|walet|ऐ�
 const BANK = String.raw`(?:bank|bnk|baink|khata|khate|khaate|khatey|a\/c|acc|acct|बैंक|खाते|खाता)`;
 /** "bank se" / "from my bank": the bank is where the money LEFT, not where it should arrive. */
 const BANK_AS_DESTINATION = String.raw`(?<!from\s)(?<!from\s(?:my|the|our)\s)${BANK}(?!\s+(?:se|से)\b)`;
+/**
+ * "bank … nahi" speaks of money only when money is in the sentence: a sum, an arrival verb, a
+ * transfer/credit, a withdrawal. "bank account verification nahi ho raha", "bank account add nahi
+ * ho raha", "my bank account is not verified" are account problems, not a missing payout.
+ */
+const MONEY_IN_SENTENCE = String.raw`(?=[\s\S]*\b(?:${MONEY}|${ARRIVE}|transfer\w*|credit\w*|withdr\w*|widraw\w*|nikal\w*|payout\w*|winning\w*|\d{2,}|ट्रांसफर|क्रेडिट|विड्रॉ\S*|निकासी|निकाल\S*)\b)`;
 
 const ADD = String.raw`(?:add|ad|aad|added|adding|ऐड|एड|ऐडेड)`;
 /** A sum: "500", "500 ka", "2,000 rs". */
@@ -90,9 +96,9 @@ const WITHDRAWAL_CUES: Array<[RegExp, number]> = [
   [WITHDRAW_WORD, 2],
   [rx(String.raw`\b(?:winning|winnings|wining|jeeta|jeete|jeeti|jeet\s+(?:ka|ki|ke|hua)|prize\s+money|जीत\S*|विनिंग)\b`), 1.5],
   // bank / account: nothing arrived, no transfer (but not "bank se …" — money leaving the bank)
-  [rx(String.raw`\b${BANK_AS_DESTINATION}${W(5)}${NOT}\b`), 2],
-  [rx(String.raw`\b${NOT}${W(3)}${BANK_AS_DESTINATION}\b`), 2],
-  [rx(String.raw`\b(?:account|acount|acc|khate|khata|खाते)\s+(?:me|mein|m|par|pe|mai|में)(?:\s+(?!add\b|ad\b|jama\b)\S+){0,2}?\s+${NOT}\s+(?:${ARRIVE}|transfer\w*|hue|hua|huye|pahuch\w*|ट्रांसफर|हुए|हुआ)`), 1.5],
+  [rx(String.raw`^${MONEY_IN_SENTENCE}[\s\S]*\b${BANK_AS_DESTINATION}${W(5)}${NOT}\b`), 2],
+  [rx(String.raw`^${MONEY_IN_SENTENCE}[\s\S]*\b${NOT}${W(3)}${BANK_AS_DESTINATION}\b`), 2],
+  [rx(String.raw`^${MONEY_IN_SENTENCE}[\s\S]*\b(?:account|acount|acc|khate|khata|खाते)\s+(?:me|mein|m|par|pe|mai|में)(?:\s+(?!add\b|ad\b|jama\b)\S+){0,2}?\s+${NOT}\s+(?:${ARRIVE}|transfer\w*|hue|hua|huye|pahuch\w*|ट्रांसफर|हुए|हुआ)`), 1.5],
   [rx(String.raw`\b(?:transfer\w*|ट्रांसफर)\s+(?:hi\s+)?${NOT}\b|\b${NOT}\s+(?:transfer\w*|ट्रांसफर)`), 2],
   // money left the wallet
   [rx(String.raw`\b${WALLET}\s+(?:se|से)${W(5)}(?:gaye|gaya|gye|chale|chala|kat\w*|cut|deduct\w*|minus|kam|nikal\w*|gayi|gai|गए|गये|कट)`), 2],
