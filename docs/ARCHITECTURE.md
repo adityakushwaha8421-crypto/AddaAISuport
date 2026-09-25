@@ -2,8 +2,9 @@
 
 **State of the codebase:** the large automatic reply system was removed (git history, commit
 `de1427a` and earlier). On the remaining infrastructure sit exactly two customer-facing workflows,
-added deliberately: the one evidence request per deposit/withdrawal case, and the one solved note
-after the export bot's payment confirmation. Nothing else can reach a customer.
+added deliberately: the one evidence request per deposit/withdrawal case (with one greeting back to
+a bare "Hi" that opens a fresh chat), and the one solved note after the export bot's payment
+confirmation. Nothing else can reach a customer.
 
 ## 1. What runs
 
@@ -25,6 +26,8 @@ workflows/evidenceRequest.ts (per customer message, in this order; any other out
   bot_enabled fresh? → not stale? → no human takeover? → first contact: no human message already in the
   chat's Telegram history (recentOutgoing minus what we sent)? → has text? → detect language →
   open request in this chat (either type, younger than CASE_REOPEN_HOURS)? → silent, no model call →
+  bare greeting (nlu/greeting.ts)? → answered once (kind 'greeting', users.greeted_at) only if nothing
+  but greetings was said in the chat within the window and no greeting was answered in it; else silent →
   nlu/issueType.ts: moneyDirection scorer, else the model once (deposit | withdrawal | other | unclear) →
   not read by a human? → bot_enabled once more → requests.create('sending') → guarded sendText(kind
   'evidence_request') → markSent + outbound message row. A failed send removes the row.
@@ -47,7 +50,7 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bot / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
 | `control/botSwitch.ts` | `bot_enabled` in the store's `settings` + `BOT_STATE_FILE` mirror; `isOnNow()` reads fresh; `restore()` at boot |
 | `control/adminCommands.ts` | `/boton` `/botoff` `/restart` for `ADMIN_TELEGRAM_IDS` and the owner in Saved Messages |
-| `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `payment_confirmed`} |
+| `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `payment_confirmed`, `greeting`} |
 | `nlu/moneyDirection.ts`, `nlu/normalize.ts`, `nlu/issueType.ts` | direction-of-money scorer (Hinglish/Hindi/English cues), text normalisation + language detection, scorer-then-model classification |
 | `workflows/evidenceRequest.ts`, `workflows/paymentConfirmed.ts` | the two workflows |
 | `response/requests.ts`, `response/html.ts` | the request and solved-note wording in three languages; HTML escaping |

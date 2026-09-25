@@ -25,7 +25,7 @@ const asDate = (v: unknown) => (typeof v === 'string' ? new Date(v) : undefined)
 
 /**
  * Customers. With a `file`, what matters for the rules — language, a human's takeover, the one-time
- * conversation check — survives a process restart.
+ * conversation check, the last greeting — survives a process restart.
  */
 class MemoryUsers implements UserRepo {
   readonly rows = new Map<string, UserRecord>();
@@ -35,7 +35,7 @@ class MemoryUsers implements UserRepo {
       this.rows.set(String(r.id), {
         ...(r as unknown as UserRecord),
         createdAt: asDate(r.createdAt) ?? new Date(), updatedAt: asDate(r.updatedAt) ?? new Date(),
-        humanTakeoverUntil: asDate(r.humanTakeoverUntil), conversationChecked: asDate(r.conversationChecked),
+        humanTakeoverUntil: asDate(r.humanTakeoverUntil), conversationChecked: asDate(r.conversationChecked), greetedAt: asDate(r.greetedAt),
       });
     }
   }
@@ -66,6 +66,10 @@ class MemoryUsers implements UserRepo {
   async setConversationChecked(userId: string, at: Date) {
     const r = this.rows.get(userId);
     if (r) (r.conversationChecked = at), this.save();
+  }
+  async setGreetedAt(userId: string, at: Date) {
+    const r = this.rows.get(userId);
+    if (r) (r.greetedAt = at), this.save();
   }
 }
 

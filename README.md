@@ -18,9 +18,17 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    naming a `User ID`, exactly that customer is told once, in their language:
    *"Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏"*
 
-Everything else — greetings, thanks, match issues, app/login problems, questions, unclear money
-messages, bare photos — is received and stored and gets **no reply**. There is no clarification
-question and no guess: when the issue is not clearly one of the two, the agent stays silent.
+3. **One greeting per fresh conversation.** A message that is only a greeting ("Hi", "Hello",
+   "Hlo", "Namaste", "Good morning sir"…) is answered with one greeting, in the customer's language,
+   **only** when it opens a conversation: no open deposit/withdrawal case in the chat, nothing else
+   said in the chat either way within `CASE_REOPEN_HOURS`, and no greeting already answered in that
+   window (kept on the customer's record, so a restart never greets twice). A "hi" inside a case,
+   after a solved case, or after an unanswered message gets nothing. A greeting with anything else
+   in it ("hi deposit nahi hua") is not a greeting: it is classified like any other message.
+
+Everything else — thanks, match issues, app/login problems, questions, unclear money messages,
+bare photos — is received and stored and gets **no reply**. There is no clarification question and
+no guess: when the issue is not clearly one of the two, the agent stays silent.
 
 The previous, much larger reply system is in git history (commit `de1427a` and earlier).
 Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -50,8 +58,8 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Two safety nets
 
 1. **Customer messaging allowlist (code).** `src/control/customerMessaging.ts` keeps
-   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly two message kinds through:
-   `evidence_request` and `payment_confirmed`. Every automatic code path sends through the guarded
+   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly three message kinds through:
+   `evidence_request`, `payment_confirmed` and `greeting`. Every automatic code path sends through the guarded
    transport (`app.transport`), which refuses any other send or forward to a chat that is not the
    support group or the export bot. Nothing added later can message a customer until it is listed there.
 2. **Kill switch (runtime).** `/botoff` sets `bot_enabled = false` in the store (shared by every

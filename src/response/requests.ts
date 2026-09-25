@@ -24,6 +24,16 @@ export function requestText(type: IssueType, lang: Language): string {
   ].join('\n');
 }
 
+/** Answered ONLY to a greeting that opens a fresh conversation with no case in it (see the workflow). */
+export function greetingText(lang: Language): string {
+  return pick(
+    lang,
+    'Namaste sir 🙏 Fantasy Adda support me aapka swagat hai. Apni problem detail me bataiye, hum check karte hain.',
+    'Hello sir 🙏 Welcome to Fantasy Adda support. Please describe your problem in detail and we will check it.',
+    'नमस्ते सर 🙏 फैंटेसी अड्डा सपोर्ट में आपका स्वागत है। अपनी समस्या विस्तार से बताइए, हम चेक करते हैं।',
+  );
+}
+
 /** After the export bot's PAYMENT CONFIRMED: the agreed note, never paraphrased. */
 export function solvedText(lang: Language): string {
   return pick(lang, 'Sir, aapka issue solved ho gaya hai. Sorry for the inconvenience. 🙏', 'Sir, your issue has been solved. Sorry for the inconvenience. 🙏', 'सर, आपका इश्यू सॉल्व हो गया है। असुविधा के लिए माफ़ी। 🙏');

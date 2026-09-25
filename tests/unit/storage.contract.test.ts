@@ -28,6 +28,11 @@ describe.each(allStoreFactories)('Store contract: $name', (factory) => {
     expect(u.firstName).toBe('Ravi');
     expect((await store.users.get('u1'))?.chatId).toBe('c1');
     expect(await store.users.get('nobody')).toBeUndefined();
+    const at = new Date('2026-09-25T10:00:00Z');
+    await store.users.setGreetedAt('u1', at);
+    expect((await store.users.get('u1'))?.greetedAt).toEqual(at);
+    await store.users.upsert({ id: 'u1', chatId: 'c1' });
+    expect((await store.users.get('u1'))?.greetedAt).toEqual(at); // an upsert keeps it
   });
 
   it('deduplicates inbound messages by (chat, telegram id, direction)', async () => {

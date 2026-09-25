@@ -14,6 +14,8 @@ export interface UserRecord {
   humanTakeoverUntil?: Date;
   /** When the chat's history was checked once for an existing human conversation. */
   conversationChecked?: Date;
+  /** When the agent last answered this customer's greeting (one greeting per conversation). */
+  greetedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +26,7 @@ export interface UserRepo {
   setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']): Promise<void>;
   setHumanTakeover(userId: string, until: Date | undefined): Promise<void>;
   setConversationChecked(userId: string, at: Date): Promise<void>;
+  setGreetedAt(userId: string, at: Date): Promise<void>;
 }
 
 // ── Evidence requests (one per case) ───────────────────────────────────────
@@ -62,7 +65,7 @@ export interface MessageMeta {
   scrubbed?: boolean;
   /** Outbound: the text carries Telegram HTML markup. */
   html?: boolean;
-  /** Inbound: what happened to it (e.g. `requested`, `already_requested`, `bot_off`). Outbound: what it is (`evidence_request`, `payment_confirmed`). */
+  /** Inbound: what happened to it (e.g. `requested`, `already_requested`, `bot_off`). Outbound: what it is (`evidence_request`, `payment_confirmed`, `greeting`). */
   kind?: string;
 }
 

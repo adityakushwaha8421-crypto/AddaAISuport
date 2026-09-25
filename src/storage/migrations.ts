@@ -203,4 +203,8 @@ CREATE INDEX evidence_requests_user_idx ON evidence_requests (user_id, status);
     id: '005_users_conversation_checked',
     sql: `ALTER TABLE users ADD COLUMN conversation_checked timestamptz;`,
   },
+  {
+    id: '006_users_greeted_at',
+    sql: `ALTER TABLE users ADD COLUMN greeted_at timestamptz;`,
+  },
 ];

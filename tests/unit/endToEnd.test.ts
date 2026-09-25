@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { assemble, type App } from '../../src/app.js';
 import { REPLIES } from '../../src/control/adminCommands.js';
 import { silentLogger } from '../../src/observability/logger.js';
-import { requestText, solvedText } from '../../src/response/requests.js';
+import { greetingText, requestText, solvedText } from '../../src/response/requests.js';
 import { MemoryStore } from '../../src/storage/memory.js';
 import { ADMIN, EXPORT_BOT, FakeTransport, NOW, SUPPORT, customerSends, pdf, photo } from '../helpers/fakeTransport.js';
 
@@ -37,29 +37,30 @@ describe('end to end', () => {
     const { app, t } = boot();
     const u = '6135570708';
     const say = (text?: string, media = [] as ReturnType<typeof photo>) => app.onMessage(t.inbound(u, text, media, now));
-    expect(await say('hi')).toBe('not_an_issue');
+    expect(await say('hi')).toBe('greeted'); // a fresh chat: the one greeting
     expect(await say('bhai maine 500 add kiye the wallet me nahi aaye')).toBe('requested');
-    expect(t.sent.map((s) => s.text)).toEqual([requestText('deposit', 'hinglish')]);
+    expect(t.sent.map((s) => s.text)).toEqual([greetingText('hinglish'), requestText('deposit', 'hinglish')]);
     // Everything the customer does next: nothing.
     minutes(1);
     for (const m of ['9810822372', 'ye lo screenshot', 'sir jaldi karo', 'kitna time lagega', 'hello?', 'deposit nahi hua abhi tak', 'withdrawal bhi check karo']) expect(await say(m), m).toBe('already_requested');
     expect(await say(undefined, photo())).toBe('no_text');
     expect(await say('statement', pdf())).toBe('already_requested');
     expect(await say('thanks')).toBe('already_requested');
-    expect(t.sent).toHaveLength(1);
+    expect(t.sent).toHaveLength(2);
     // The team confirms through the export bot.
     minutes(30);
     await app.onExportMessage({ messageId: 1, text: confirmation(u) });
-    expect(t.sent.map((s) => s.text)).toEqual([requestText('deposit', 'hinglish'), solvedText('hinglish')]);
-    expect(t.sent[1]).toMatchObject({ chatId: u, kind: 'payment_confirmed' });
+    expect(t.sent.map((s) => s.text)).toEqual([greetingText('hinglish'), requestText('deposit', 'hinglish'), solvedText('hinglish')]);
+    expect(t.sent[2]).toMatchObject({ chatId: u, kind: 'payment_confirmed' });
     // Same confirmation again, a thank-you, a question: nothing.
     await app.onExportMessage({ messageId: 2, text: confirmation(u) });
     expect(await say('thank you sir')).toBe('not_an_issue');
     expect(await say('ok')).toBe('not_an_issue');
-    expect(t.sent).toHaveLength(2);
+    expect(await say('hi')).toBe('greeting_skipped'); // the conversation is under way: no second greeting
+    expect(t.sent).toHaveLength(3);
     // A brand-new deposit problem later: a new case, one request.
     expect(await say('phir se deposit nahi hua 300 ka')).toBe('requested');
-    expect(t.sent).toHaveLength(3);
+    expect(t.sent).toHaveLength(4);
   });
 
   it('withdrawal: request once (only the two withdrawal items) → silence for good; no confirmation path exists', async () => {
@@ -170,7 +171,7 @@ describe('/status and old-bot detection', () => {
     expect(reply.chatId).toBe(ADMIN);
     expect(reply.text).toMatch(/✅ Bot is ON/);
     expect(reply.text).toMatch(/Code: abc1234/);
-    expect(reply.text).toMatch(/1 evidence request, 0 solved notes/);
+    expect(reply.text).toMatch(/1 evidence request, 0 solved notes, 0 greetings/);
     expect(reply.text).toMatch(/stream taken over 5× since start ⚠️ another connection is using this session/);
     expect(reply.text).toMatch(/OLD bot wording seen 2× in the last 24h/);
     // A customer typing /status gets nothing and learns nothing.

@@ -2,11 +2,12 @@ import type { Logger } from 'pino';
 import { BotOffError } from '../control/guardedTransport.js';
 import { messageBody, type InboundMessage } from '../domain/messages.js';
 import type { LlmClient } from '../llm/client.js';
+import { isGreeting } from '../nlu/greeting.js';
 import { classifyIssue, type IssueType } from '../nlu/issueType.js';
 import { detectLanguage } from '../nlu/normalize.js';
-import { requestText, type Language } from '../response/requests.js';
+import { greetingText, requestText, type Language } from '../response/requests.js';
 import { escapeHtml } from '../response/html.js';
-import type { Store } from '../storage/types.js';
+import type { Store, UserRecord } from '../storage/types.js';
 import type { ReadStateApi, Transport } from '../telegram/transport.js';
 
 /** "Never expires": HUMAN_TAKEOVER_HOURS=0. */
@@ -14,6 +15,8 @@ const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
 
 export type RequestOutcome =
   | 'requested'
+  | 'greeted'
+  | 'greeting_skipped'
   | 'bot_off'
   | 'stale'
   | 'human'
@@ -47,7 +50,8 @@ export interface EvidenceRequestOptions {
 /**
  * The one workflow: read which way the money went (deposit or withdrawal), send the evidence request
  * ONCE, then stay silent in that case — no acknowledgements, reminders, status, follow-ups. The
- * human team takes it from there. Nothing else is ever said to the customer by this class.
+ * human team takes it from there. The only other thing this class says: a greeting back to a bare
+ * "Hi"/"Hello" that OPENS a conversation — no case in the chat, nothing said either way recently.
  */
 export class EvidenceRequestWorkflow {
   constructor(private readonly o: EvidenceRequestOptions) {}
@@ -87,8 +91,17 @@ export class EvidenceRequestWorkflow {
     const reopenMs = (this.o.reopenHours ?? 48) * 3_600_000;
     if (open.some((r) => r.status === 'sending' || now.getTime() - r.createdAt.getTime() < reopenMs)) return 'already_requested';
 
-    const history = (await store.messages.recent(msg.chatId, 12))
-      .filter((m) => m.direction === 'in' && m.telegramMessageId !== msg.messageId && now.getTime() - m.createdAt.getTime() < 48 * 3_600_000)
+    const earlier = (await store.messages.recent(msg.chatId, 12))
+      .filter((m) => m.telegramMessageId !== msg.messageId && now.getTime() - m.createdAt.getTime() < reopenMs);
+    // A bare greeting: answered only when it opens the conversation (see `greet`); never classified.
+    // Under way = something was said in the chat within the window other than bare greetings.
+    if (isGreeting(body)) {
+      const underWay = earlier.some((m) => m.direction === 'out' || !isGreeting([m.text, m.caption].filter(Boolean).join('\n')));
+      return this.greet(msg, user, language, underWay, now, clog);
+    }
+
+    const history = earlier
+      .filter((m) => m.direction === 'in')
       .map((m) => [m.text, m.caption].filter(Boolean).join('\n'))
       .filter(Boolean);
     const verdict = await classifyIssue(body, this.o.llm, clog, { history });
@@ -103,7 +116,7 @@ export class EvidenceRequestWorkflow {
     try {
       const sent = await this.o.transport.sendText(msg.chatId, escapeHtml(text), { html: true, kind: 'evidence_request', replyToMessageId: msg.messageId });
       await store.requests.markSent(request.id, sent.messageId);
-      await store.messages.insert({ chatId: msg.chatId, userId: msg.userId, telegramMessageId: sent.messageId, direction: 'out', text, media: [], replyToMessageId: msg.messageId, meta: { kind: 'evidence_request' } });
+      await store.messages.insert({ chatId: msg.chatId, userId: msg.userId, telegramMessageId: sent.messageId, direction: 'out', text, media: [], replyToMessageId: msg.messageId, meta: { kind: 'evidence_request' }, createdAt: now });
       clog.info({ issue: verdict.type, source: verdict.source, language }, 'evidence request sent (the one message of this case)');
       return 'requested';
     } catch (err) {
@@ -113,6 +126,43 @@ export class EvidenceRequestWorkflow {
         return 'cancelled';
       }
       clog.warn({ err, issue: verdict.type }, 'evidence request could not be sent');
+      return 'send_failed';
+    }
+  }
+
+  /**
+   * "Hi" / "Hello" / "Hlo" and nothing else. Answered ONCE, and only when it opens a conversation:
+   * no open case in the chat (checked by the caller), nothing but bare greetings written in it
+   * either way within the case window, and no greeting answered within that window (kept on the customer's record, so a
+   * restart does not greet twice). Otherwise silence — a "hi" inside a case, after a question or
+   * after a solved case is the team's to answer.
+   */
+  private async greet(msg: InboundMessage, user: UserRecord | undefined, language: Language, conversationUnderWay: boolean, now: Date, log: Logger): Promise<RequestOutcome> {
+    const { store } = this.o;
+    const windowMs = (this.o.reopenHours ?? 48) * 3_600_000;
+    if (user?.greetedAt && now.getTime() - user.greetedAt.getTime() < windowMs) {
+      log.debug('greeting not answered: greeted already in this conversation');
+      return 'greeting_skipped';
+    }
+    if (conversationUnderWay) {
+      log.debug('greeting not answered: the conversation is already under way');
+      return 'greeting_skipped';
+    }
+    if (await this.seenByHuman(msg.chatId, msg.messageId, log)) return 'seen_by_human';
+    if (!(await this.o.botSwitch.isOnNow())) return 'bot_off';
+    const text = greetingText(language);
+    try {
+      const sent = await this.o.transport.sendText(msg.chatId, escapeHtml(text), { html: true, kind: 'greeting', replyToMessageId: msg.messageId });
+      await store.users.setGreetedAt(msg.userId, now);
+      await store.messages.insert({ chatId: msg.chatId, userId: msg.userId, telegramMessageId: sent.messageId, direction: 'out', text, media: [], replyToMessageId: msg.messageId, meta: { kind: 'greeting' }, createdAt: now });
+      log.info({ language }, 'greeting sent (a fresh conversation, no case)');
+      return 'greeted';
+    } catch (err) {
+      if (err instanceof BotOffError) {
+        log.info('greeting cancelled: sending is off');
+        return 'cancelled';
+      }
+      log.warn({ err }, 'greeting could not be sent');
       return 'send_failed';
     }
   }

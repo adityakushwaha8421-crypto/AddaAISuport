@@ -38,6 +38,7 @@ const toUser = (r: Row): UserRecord => ({
   preferredLanguage: str(r.preferred_language) as UserRecord['preferredLanguage'],
   humanTakeoverUntil: date(r.human_takeover_until),
   conversationChecked: date(r.conversation_checked),
+  greetedAt: date(r.greeted_at),
   createdAt: new Date(r.created_at),
   updatedAt: new Date(r.updated_at),
 });
@@ -100,6 +101,9 @@ class PgUsers implements UserRepo {
   }
   async setConversationChecked(userId: string, at: Date) {
     await this.db.query(`UPDATE users SET conversation_checked = $2, updated_at = now() WHERE id = $1`, [userId, at]);
+  }
+  async setGreetedAt(userId: string, at: Date) {
+    await this.db.query(`UPDATE users SET greeted_at = $2, updated_at = now() WHERE id = $1`, [userId, at]);
   }
 }
 

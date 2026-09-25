@@ -77,8 +77,8 @@ describe('identify the issue, request once, then silence', () => {
     expect(repliesTo('hi')[0]).toBe(requestText('withdrawal', 'hindi'));
   });
 
-  it('anything that is not clearly a deposit or withdrawal gets nothing: no greeting, no question, no guess', async () => {
-    for (const m of ['hi', 'hello', 'good morning', 'thanks', 'match cancel ho gaya points nahi mile', 'lineup kab aayega', 'otp nahi aaya', 'app crash ho raha hai', 'login nahi ho raha', 'amount credit nahi hua', 'kuch bhi random', '/start', 'human se baat karao']) {
+  it('anything that is not clearly a deposit or withdrawal gets nothing: no question, no guess (a bare greeting opening a chat is the one exception, tested in greeting.test.ts)', async () => {
+    for (const m of ['hi sir kuch puchna tha', 'thanks', 'match cancel ho gaya points nahi mile', 'lineup kab aayega', 'otp nahi aaya', 'app crash ho raha hai', 'login nahi ho raha', 'amount credit nahi hua', 'kuch bhi random', '/start', 'human se baat karao']) {
       expect(await say('n1', m), m).toBe('not_an_issue');
     }
     expect(repliesTo('n1')).toHaveLength(0);
@@ -107,7 +107,7 @@ describe('identify the issue, request once, then silence', () => {
   });
 
   it('a human in the chat wins: their message silences the agent for 24 hours; a message they already read is theirs', async () => {
-    await say('h1', 'hello');
+    await say('h1', 'hello sir ek problem hai');
     await app.onOwnOutgoing({ chatId: 'h1', messageId: t.nextId('h1'), text: 'Sir, main dekh raha hoon' });
     expect(await say('h1', 'deposit nahi hua')).toBe('human');
     advance(23 * 60);

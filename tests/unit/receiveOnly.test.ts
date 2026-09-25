@@ -9,7 +9,7 @@ import { Metrics } from '../../src/observability/metrics.js';
 import { MemoryStore } from '../../src/storage/memory.js';
 
 /**
- * Everything that is NOT the one evidence request or the one solved note: received and stored,
+ * Everything that is NOT the one evidence request, the one solved note or the one greeting: received and stored,
  * and nothing goes back to the customer, ON or OFF. Admin commands still answer the admin. Any
  * code path that tries to send a customer anything else is refused by the transport.
  */
@@ -24,14 +24,14 @@ function build() {
 }
 
 describe('receive-only agent', () => {
-  it('ships with customer messaging disabled except the two workflow kinds', () => {
+  it('ships with customer messaging disabled except the three workflow kinds', () => {
     expect(CUSTOMER_MESSAGING_ENABLED).toBe(false);
-    expect([...ENABLED_CUSTOMER_MESSAGES].sort()).toEqual(['evidence_request', 'payment_confirmed']);
+    expect([...ENABLED_CUSTOMER_MESSAGES].sort()).toEqual(['evidence_request', 'greeting', 'payment_confirmed']);
   });
 
-  it('stores every customer message and sends ZERO automatic messages for anything that is not a deposit/withdrawal issue', async () => {
+  it('stores every customer message and sends ZERO automatic messages for anything that is not a deposit/withdrawal issue (or a bare greeting opening a fresh chat)', async () => {
     const { store, transport, app, msg } = build();
-    const texts = ['Hi', 'hello sir', 'match cancel ho gaya points nahi mile', 'kya bhejna hai?', 'thanks', 'kuch bhi random 12345', '/start', 'human se baat karao', 'otp nahi aaya', 'app crash ho raha hai'];
+    const texts = ['Hi sir mera match', 'hello sir problem hai', 'match cancel ho gaya points nahi mile', 'kya bhejna hai?', 'thanks', 'kuch bhi random 12345', '/start', 'human se baat karao', 'otp nahi aaya', 'app crash ho raha hai'];
     for (const [i, t] of texts.entries()) await app.onMessage(msg(`c${i % 3}`, t));
     await app.onMessage(msg('c0', undefined, [{ kind: 'photo', fileRef: 'f1', fileUniqueId: 'f1', mimeType: 'image/jpeg' }]));
     await app.onMessage(msg('c1', 'statement', [{ kind: 'document', fileRef: 'f2', fileUniqueId: 'f2', mimeType: 'application/pdf', fileName: 's.pdf' }]));
@@ -50,7 +50,7 @@ describe('receive-only agent', () => {
     expect((await store.messages.recent('c9', 1))[0]?.processedAt).toBeDefined();
     await app.onMessage(msg(ADMIN, '/boton'));
     expect(transport.sent.at(-1)).toMatchObject({ chatId: ADMIN, text: REPLIES.on });
-    await app.onMessage(msg('c9', 'hello?'));
+    await app.onMessage(msg('c9', 'koi hai?'));
     expect(customerSends(transport)).toHaveLength(0);
     // A customer typing the commands changes nothing and gets nothing.
     await app.onMessage(msg('c8', '/botoff'));
@@ -60,7 +60,7 @@ describe('receive-only agent', () => {
 
   it('a duplicate delivery of the same message is stored once', async () => {
     const { store, app, msg } = build();
-    const m = msg('c5', 'hi');
+    const m = msg('c5', 'kya haal hai');
     await app.onMessage(m);
     await app.onMessage(m);
     expect(await store.messages.recent('c5', 10)).toHaveLength(1);
@@ -78,7 +78,7 @@ describe('receive-only agent', () => {
     const { transport, app } = build();
     await expect(app.transport.sendText('c1', 'Sir, ...')).rejects.toBeInstanceOf(BotOffError);
     await expect(app.transport.sendText('c1', 'Sir, ...', { kind: 'reminder' })).rejects.toBeInstanceOf(BotOffError);
-    await expect(app.transport.sendText('c1', 'Sir, ...', { kind: 'greeting' })).rejects.toBeInstanceOf(BotOffError);
+    await expect(app.transport.sendText('c1', 'Sir, ...', { kind: 'follow_up' })).rejects.toBeInstanceOf(BotOffError);
     expect(transport.sent).toHaveLength(0);
     // Team chats are reachable (nothing uses them yet), so a future workflow can file tickets/exports.
     await app.transport.sendText(SUPPORT, 'ticket');

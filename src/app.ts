@@ -57,7 +57,7 @@ export interface App {
   /** Replies from another (old) copy of the bot seen in customer chats. */
   otherCopy: OtherCopyDetector;
   status(): Promise<string>;
-  /** A customer wrote to the account: stored; a deposit/withdrawal issue gets its one request. */
+  /** A customer wrote to the account: stored; a deposit/withdrawal issue gets its one request; a bare greeting opening a fresh chat gets one greeting. */
   onMessage(msg: InboundMessage): Promise<RequestOutcome | 'admin' | 'duplicate'>;
   /** The account owner typed in Saved Messages (admin console). */
   onAdminCommand(ev: AdminCommandEvent): Promise<void>;
@@ -70,9 +70,10 @@ export interface App {
 
 /**
  * The agent: it holds the Telegram session, stores what customers send, and runs exactly two
- * customer-facing workflows — the one evidence request per deposit/withdrawal case, and the one
- * solved note after the export bot's payment confirmation. Both send through the guarded
- * transport, which refuses everything else and everything while OFF.
+ * customer-facing workflows — the one evidence request per deposit/withdrawal case (plus one
+ * greeting back to a bare "Hi" that opens a fresh chat), and the one solved note after the export
+ * bot's payment confirmation. Both send through the guarded transport, which refuses everything
+ * else and everything while OFF.
  */
 export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
   const now = () => c.clock?.() ?? new Date();
@@ -93,6 +94,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
   const startedAt = now();
   let requestsSent = 0;
   let notesSent = 0;
+  let greetingsSent = 0;
   const status = async (): Promise<string> => {
     const on = await botSwitch.isOnNow();
     const up = Math.round((now().getTime() - startedAt.getTime()) / 60_000);
@@ -101,7 +103,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     const lines = [
       on ? REPLIES.on : REPLIES.off,
       `Code: ${cfg.version ?? 'unknown'} · up ${up >= 60 ? `${Math.floor(up / 60)}h ${up % 60}m` : `${up}m`}`,
-      `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}`,
+      `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}, ${greetingsSent} greeting${greetingsSent === 1 ? '' : 's'}`,
     ];
     if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
     lines.push(seen.length
@@ -138,9 +140,13 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       // The one workflow. Its first line checks the switch; every other outcome is silence.
       const outcome = await requests.onMessage(msg);
       if (outcome === 'requested') requestsSent++;
+      if (outcome === 'greeted') greetingsSent++;
       await c.store.messages.markProcessed(msg.chatId, [msg.messageId]);
-      c.metrics?.outbound.inc({ kind: 'evidence_request', outcome });
-      c.log.info({ chat: msg.chatId, message: msg.messageId, media: msg.media.length, outcome, at: now().toISOString() }, outcome === 'requested' ? 'customer message: evidence request sent' : 'customer message stored, no reply');
+      c.metrics?.outbound.inc({ kind: outcome.startsWith('greet') ? 'greeting' : 'evidence_request', outcome });
+      c.log.info(
+        { chat: msg.chatId, message: msg.messageId, media: msg.media.length, outcome, at: now().toISOString() },
+        outcome === 'requested' ? 'customer message: evidence request sent' : outcome === 'greeted' ? 'customer message: greeting sent (fresh conversation)' : 'customer message stored, no reply',
+      );
       return outcome;
     },
     async onAdminCommand(ev) {
