@@ -182,7 +182,7 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
   });
 
   it('no User ID, not a confirmation, or bot OFF: nobody is messaged', async () => {
-    expect(await app.confirmations.onExportMessage({ messageId: 1, text: '✅ PAYMENT CONFIRMED\n📱 Mobile: 9810822372' })).toBe('ignored');
+    expect(await app.confirmations.onExportMessage({ messageId: 1, text: '✅ PAYMENT CONFIRMED\n📱 Mobile: 9810822372' })).toBe('user_unverified'); // no User ID and nobody typed that number
     expect(await app.confirmations.onExportMessage({ messageId: 2, text: 'Files received 👍' })).toBe('ignored');
     expect(await app.confirmations.onExportMessage({ messageId: 3, text: '⚠️ MANUAL REVIEW NEEDED\nUser ID: 6135570708' })).toBe('ignored');
     await app.botSwitch.set(false);

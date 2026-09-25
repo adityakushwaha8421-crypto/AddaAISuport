@@ -71,6 +71,17 @@ class MemoryUsers implements UserRepo {
     const r = this.rows.get(userId);
     if (r) (r.greetedAt = at), this.save();
   }
+  async addMobileNumber(userId: string, number: string) {
+    const r = this.rows.get(userId);
+    if (!r) return;
+    const list = r.mobileNumbers ?? [];
+    if (list.includes(number)) return;
+    r.mobileNumbers = [...list, number].slice(-10);
+    this.save();
+  }
+  async findByMobileNumber(number: string) {
+    return clone([...this.rows.values()].filter((r) => r.mobileNumbers?.includes(number)));
+  }
 }
 
 /**

@@ -16,6 +16,8 @@ export interface UserRecord {
   conversationChecked?: Date;
   /** When the agent last answered this customer's greeting (one greeting per conversation). */
   greetedAt?: Date;
+  /** Mobile numbers this customer typed in the chat (the export bot's fallback when a confirmation has no User ID). */
+  mobileNumbers?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +29,10 @@ export interface UserRepo {
   setHumanTakeover(userId: string, until: Date | undefined): Promise<void>;
   setConversationChecked(userId: string, at: Date): Promise<void>;
   setGreetedAt(userId: string, at: Date): Promise<void>;
+  /** Remember that this customer typed this mobile number. Idempotent. */
+  addMobileNumber(userId: string, number: string, at: Date): Promise<void>;
+  /** Every customer who typed this exact number. */
+  findByMobileNumber(number: string): Promise<UserRecord[]>;
 }
 
 // ── Evidence requests (one per case) ───────────────────────────────────────

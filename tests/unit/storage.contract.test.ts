@@ -35,6 +35,21 @@ describe.each(allStoreFactories)('Store contract: $name', (factory) => {
     expect((await store.users.get('u1'))?.greetedAt).toEqual(at); // an upsert keeps it
   });
 
+  it('remembers the mobile numbers a customer typed and finds customers by number', async () => {
+    await store.users.upsert({ id: 'u1', chatId: 'c1' });
+    await store.users.upsert({ id: 'u2', chatId: 'c2' });
+    const at = new Date('2026-09-25T10:00:00Z');
+    await store.users.addMobileNumber('u1', '9330949495', at);
+    await store.users.addMobileNumber('u1', '9330949495', at); // idempotent
+    await store.users.addMobileNumber('u1', '9810822372', at);
+    await store.users.addMobileNumber('u2', '9330949495', at);
+    expect((await store.users.get('u1'))?.mobileNumbers).toEqual(['9330949495', '9810822372']);
+    expect((await store.users.get('u2'))?.mobileNumbers).toEqual(['9330949495']);
+    expect((await store.users.findByMobileNumber('9330949495')).map((u) => u.id).sort()).toEqual(['u1', 'u2']);
+    expect((await store.users.findByMobileNumber('9810822372')).map((u) => u.id)).toEqual(['u1']);
+    expect(await store.users.findByMobileNumber('9000000000')).toEqual([]);
+  });
+
   it('deduplicates inbound messages by (chat, telegram id, direction)', async () => {
     const base = { chatId: 'c1', userId: 'u1', telegramMessageId: 10, direction: 'in' as const, media: [], meta: {} };
     const a = await store.messages.insert({ ...base, text: 'hello' });

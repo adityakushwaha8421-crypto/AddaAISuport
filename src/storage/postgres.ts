@@ -91,7 +91,11 @@ class PgUsers implements UserRepo {
   }
   async get(userId: string) {
     const { rows } = await this.db.query(`SELECT * FROM users WHERE id = $1`, [userId]);
-    return rows[0] ? toUser(rows[0]) : undefined;
+    if (!rows[0]) return undefined;
+    const user = toUser(rows[0]);
+    const mobiles = await this.db.query(`SELECT number FROM customer_mobiles WHERE user_id = $1 ORDER BY seen_at`, [userId]);
+    if (mobiles.rows.length) user.mobileNumbers = mobiles.rows.map((r: Row) => String(r.number));
+    return user;
   }
   async setPreferredLanguage(userId: string, lang: UserRecord['preferredLanguage']) {
     await this.db.query(`UPDATE users SET preferred_language = $2, updated_at = now() WHERE id = $1`, [userId, lang ?? null]);
@@ -104,6 +108,18 @@ class PgUsers implements UserRepo {
   }
   async setGreetedAt(userId: string, at: Date) {
     await this.db.query(`UPDATE users SET greeted_at = $2, updated_at = now() WHERE id = $1`, [userId, at]);
+  }
+  async addMobileNumber(userId: string, number: string, at: Date) {
+    await this.db.query(`INSERT INTO customer_mobiles (number, user_id, seen_at) VALUES ($1, $2, $3) ON CONFLICT (number, user_id) DO NOTHING`, [number, userId, at]);
+  }
+  async findByMobileNumber(number: string) {
+    const { rows } = await this.db.query(`SELECT user_id FROM customer_mobiles WHERE number = $1 ORDER BY seen_at`, [number]);
+    const users: UserRecord[] = [];
+    for (const r of rows) {
+      const u = await this.get(String(r.user_id));
+      if (u) users.push(u);
+    }
+    return users;
   }
 }
 

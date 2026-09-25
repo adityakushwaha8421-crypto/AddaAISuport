@@ -32,6 +32,11 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    checked against the Telegram user behind that User ID: a mismatch, or a User ID Telegram does
    not know to this account, sends nothing and is logged. Without an amount line the note says the
    payment is confirmed, without a figure.
+   **No User ID:** the `Mobile` line is the fallback. Every mobile number a customer types in their
+   chat is remembered on their record; the confirmation goes to the one customer who typed that exact
+   number, and only if the confirmation's name or `@username` positively matches them on Telegram.
+   Nobody typed it, several customers match, or the name cannot be confirmed → nobody is messaged,
+   and the log says why. A User ID always wins over the Mobile line.
 
 3. **One greeting per fresh conversation.** A message that is only a greeting ("Hi", "Hello",
    "Hlo", "Namaste", "Good morning sir"…) is answered with one greeting, in the customer's language,

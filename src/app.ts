@@ -5,6 +5,7 @@ import { CUSTOMER_MESSAGING_ENABLED, ENABLED_CUSTOMER_MESSAGES } from './control
 import { guardTransport } from './control/guardedTransport.js';
 import { OtherCopyDetector } from './control/otherCopy.js';
 import { messageBody, type InboundMessage } from './domain/messages.js';
+import { extractMobileNumbers } from './nlu/mobile.js';
 import type { LlmClient } from './llm/client.js';
 import type { Metrics } from './observability/metrics.js';
 import { scrubber } from './security/scrubber.js';
@@ -145,6 +146,8 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
         c.metrics?.duplicateMessages.inc();
         return 'duplicate';
       }
+      // A mobile number the customer typed is remembered: a payment confirmation without a User ID finds them by it.
+      for (const number of extractMobileNumbers(body).slice(0, 5)) await c.store.users.addMobileNumber(msg.userId, number, msg.date);
       c.metrics?.inboundMessages.inc({ kind: msg.media.length ? 'media' : 'text' });
       // The one workflow. Its first line checks the switch; every other outcome is silence.
       const outcome = await requests.onMessage(msg);

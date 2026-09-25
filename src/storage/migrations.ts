@@ -207,4 +207,16 @@ CREATE INDEX evidence_requests_user_idx ON evidence_requests (user_id, status);
     id: '006_users_greeted_at',
     sql: `ALTER TABLE users ADD COLUMN greeted_at timestamptz;`,
   },
+  {
+    id: '007_customer_mobiles',
+    sql: `
+CREATE TABLE customer_mobiles (
+  number    text NOT NULL,
+  user_id   text NOT NULL,
+  seen_at   timestamptz NOT NULL,
+  PRIMARY KEY (number, user_id)
+);
+CREATE INDEX customer_mobiles_user_idx ON customer_mobiles (user_id);
+`,
+  },
 ];
