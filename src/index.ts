@@ -55,6 +55,7 @@ function readConfirmation(stateFile: string): { chatId: string; text: string } |
 async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
   const env = loadEnv();
   scrubber.register(...secretValues(env));
+  for (const w of env.warnings) rootLog.warn(w);
   const instance = `agent-${process.pid}${ctx.attempt > 1 ? `-r${ctx.attempt}` : ''}`;
   const log = rootLog.child({ instance });
   const metrics = new Metrics();

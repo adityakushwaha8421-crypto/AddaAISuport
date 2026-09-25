@@ -85,7 +85,10 @@ const envSchema = z.object({
   HTTP_HOST: z.string().default('127.0.0.1'),
 });
 
-export type Env = z.infer<typeof envSchema>;
+export type Env = z.infer<typeof envSchema> & {
+  /** Things that were wrong but harmless, fixed up at load time; logged at boot. */
+  warnings: string[];
+};
 
 export class ConfigError extends Error {}
 
@@ -99,16 +102,24 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, require: EnvReq
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new ConfigError(`Invalid environment: ${issues}`);
   }
-  const env = parsed.data;
+  const env: Env = { ...parsed.data, warnings: [] };
   const problems: string[] = [];
 
   if (env.NODE_ENV !== 'test') {
     if (require.includes('telegram')) {
       if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH) problems.push('TELEGRAM_API_ID and TELEGRAM_API_HASH are required (https://my.telegram.org)');
-      // A path setting that holds a secret would end up as directory names on disk: refuse it outright.
+      // A path setting that holds a secret would end up as directory names on disk: refuse it outright —
+      // except the session FILE path while a session STRING is in use: the file is not touched then, so a
+      // blob pasted into that line (it keeps happening) must not take the agent down. It is ignored, with a warning.
       for (const key of ['TELEGRAM_SESSION_FILE', 'INSTANCE_LOCK_FILE', 'BOT_STATE_FILE', 'REQUESTS_STATE_FILE', 'USERS_STATE_FILE'] as const) {
         const v = env[key];
-        if (looksLikeSessionString(v) || v.length > 200 || /\s/.test(v)) problems.push(`${key} must be a file path such as secrets/telegram.session.enc (the session string belongs in TELEGRAM_SESSION)`);
+        if (!(looksLikeSessionString(v) || v.length > 200 || /\s/.test(v))) continue;
+        if (key === 'TELEGRAM_SESSION_FILE' && env.TELEGRAM_SESSION) {
+          env.TELEGRAM_SESSION_FILE = 'secrets/telegram.session.enc';
+          env.warnings.push('TELEGRAM_SESSION_FILE holds a long value, not a file path; ignored because TELEGRAM_SESSION is in use. Set it to secrets/telegram.session.enc (or delete the line).');
+          continue;
+        }
+        problems.push(`${key} must be a file path such as secrets/telegram.session.enc (the session string belongs in TELEGRAM_SESSION)`);
       }
       if (env.TELEGRAM_SESSION && !looksLikeSessionString(env.TELEGRAM_SESSION)) {
         problems.push('TELEGRAM_SESSION does not look like a Telegram session string (run `npm run telegram:session` to create one)');

@@ -64,7 +64,13 @@ describe('session bootstrap', () => {
 
   it('refuses a session string pasted into a path setting (it would become directory names on disk)', () => {
     const base = { NODE_ENV: 'production', STORE: 'memory', TELEGRAM_API_ID: '1', TELEGRAM_API_HASH: 'x'.repeat(32), TELEGRAM_SESSION: fakeSession };
-    expect(() => loadEnv({ ...base, TELEGRAM_SESSION_FILE: fakeSession })).toThrow(/TELEGRAM_SESSION_FILE must be a file path/);
+    // With a session STRING in use the file path is unused: a blob pasted there is ignored with a warning, never fatal.
+    const tolerated = loadEnv({ ...base, TELEGRAM_SESSION_FILE: fakeSession });
+    expect(tolerated.TELEGRAM_SESSION_FILE).toBe('secrets/telegram.session.enc');
+    expect(tolerated.warnings).toEqual([expect.stringMatching(/TELEGRAM_SESSION_FILE holds a long value/)]);
+    // Without a session string the file IS the session: then it must be a real path.
+    const { TELEGRAM_SESSION: _unused, ...fileMode } = base;
+    expect(() => loadEnv({ ...fileMode, SESSION_ENCRYPTION_KEY: 'k'.repeat(64), TELEGRAM_SESSION_FILE: fakeSession })).toThrow(/TELEGRAM_SESSION_FILE must be a file path/);
     expect(() => loadEnv({ ...base, INSTANCE_LOCK_FILE: 'a'.repeat(300) })).toThrow(/INSTANCE_LOCK_FILE must be a file path/);
     expect(loadEnv({ ...base, TELEGRAM_SESSION_FILE: 'secrets/telegram.session.enc' }).INSTANCE_LOCK_FILE).toBe('secrets/agent.lock');
   });
