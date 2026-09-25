@@ -39,6 +39,11 @@ export interface Transport {
   sendText(chatId: string, text: string, opts?: SendOptions): Promise<{ messageId: number }>;
   /** Ids of the messages this account sent in the chat, among its most recent `limit` messages (is a human already talking to this customer?). */
   recentOutgoing?(chatId: string, limit: number): Promise<number[]>;
+  /**
+   * Take the chat out of every one of the account's chat folders with these titles that it is in.
+   * Returns the titles it left. Telegram rejects an empty folder, so removing the last chat deletes it.
+   */
+  removeChatFromFolders?(chatId: string, titles: string[]): Promise<string[]>;
   healthy(): boolean;
 }
 

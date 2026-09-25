@@ -55,6 +55,17 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - The message is older than `STALE_MESSAGE_SECONDS` (300) when handled: a restart or reconnect catch-up never answers old messages.
 - The message has no text (a bare screenshot or file says nothing about the issue).
 
+## When a human replies: the chat leaves the team's folders
+
+The team files waiting customer chats into Telegram chat folders on the account (by default
+**Support** and **Match issues**). Once a human replies in a customer chat from the account, the
+agent takes that chat out of those folders automatically, right after the reply is sent: it is dealt
+with. The customer is never told, nothing else changes, and a failed folder edit is only logged.
+Folder titles come from `HUMAN_REPLY_FOLDERS` (comma-separated, as shown in Telegram; empty = off).
+This is account housekeeping, not a message, so it also runs while the bot is `/botoff`. Only ordinary
+folders are edited (shared folder links are left alone); a folder emptied this way is deleted, because
+Telegram keeps no empty folder.
+
 ## Two safety nets
 
 1. **Customer messaging allowlist (code).** `src/control/customerMessaging.ts` keeps
@@ -93,7 +104,7 @@ same words are an ordinary customer message: stored, not acted on, not answered.
 |---|---|---|
 | `/botoff` | `bot_enabled = false`, saved in the store and the state file. | `⛔ Bot is OFF` |
 | `/boton` | `bot_enabled = true`, saved the same way. | `✅ Bot is ON` |
-| `/status` | Diagnostics, nothing changes: ON/OFF, running commit and uptime, how many evidence requests and solved notes this process sent, the Telegram update stream's health (how many times another connection took over this session), and whether replies in the **old bot's wording** were seen in customer chats in the last 24 h — i.e. whether an old copy of the bot is still running somewhere on this account. | the status text |
+| `/status` | Diagnostics, nothing changes: ON/OFF, running commit and uptime, how many evidence requests, solved notes and greetings this process sent, how many chats left the folders after a human reply, the Telegram update stream's health (how many times another connection took over this session), and whether replies in the **old bot's wording** were seen in customer chats in the last 24 h — i.e. whether an old copy of the bot is still running somewhere on this account. | the status text |
 | `/restart` (or `kill -USR2 <pid>` on the machine) | **Update + restart.** `git pull --ff-only` in the project folder, `npm install` if the lockfile changed, `npm run build`, then the running agent stops cleanly and a fresh process starts on the new code (`RESTART_MODE=respawn`, the default; `exit` lets systemd/docker/pm2 restart it instead). `.env` is re-read, the ON/OFF state is kept. If the pull or build fails, nothing restarts and the admin is told why. | `🔄 Pulling the latest code…` at once; then `📥 Pulled N commits (a → b)` with the commit list and files changed (or `📥 Already up to date: <commit> — <subject>`), `Built. Restarting…`; then `✅ Bot restarted successfully. Running <commit> — <subject>` from the new process once it is up; or `⚠️ Update failed.` + reason |
 
 ## What is stored

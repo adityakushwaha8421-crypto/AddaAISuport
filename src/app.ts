@@ -11,6 +11,7 @@ import { scrubber } from './security/scrubber.js';
 import type { Store } from './storage/types.js';
 import type { ReadStateApi, SupportGroupMessage, Transport } from './telegram/transport.js';
 import { EvidenceRequestWorkflow, type RequestOutcome } from './workflows/evidenceRequest.js';
+import { HumanReplyFolders } from './workflows/humanReplyFolders.js';
 import { PaymentConfirmedWorkflow } from './workflows/paymentConfirmed.js';
 
 export interface AppConfig {
@@ -27,6 +28,8 @@ export interface AppConfig {
   staleSeconds?: number;
   reopenHours?: number;
   takeoverHours?: number;
+  /** Chat folders a customer chat leaves once a human has replied in it (HUMAN_REPLY_FOLDERS). */
+  humanReplyFolders?: string[];
   /** Shown by /status. */
   version?: string;
   transportStats?: () => { reconnects: number; lastUpdateAt: Date };
@@ -54,6 +57,8 @@ export interface App {
   transport: Transport;
   requests: EvidenceRequestWorkflow;
   confirmations: PaymentConfirmedWorkflow;
+  /** Takes a chat out of the team's folders once a human has replied in it. */
+  folders: HumanReplyFolders;
   /** Replies from another (old) copy of the bot seen in customer chats. */
   otherCopy: OtherCopyDetector;
   status(): Promise<string>;
@@ -62,7 +67,7 @@ export interface App {
   /** The account owner typed in Saved Messages (admin console). */
   onAdminCommand(ev: AdminCommandEvent): Promise<void>;
   onSupportMessage(msg: SupportGroupMessage): Promise<void>;
-  /** A human wrote from the account in a customer chat: the chat is theirs for HUMAN_TAKEOVER_HOURS. */
+  /** A human wrote from the account in a customer chat: the chat is theirs for HUMAN_TAKEOVER_HOURS, and it leaves the team's folders. */
   onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
   /** The export bot wrote: a valid PAYMENT CONFIRMED with a User ID tells that customer once. */
   onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
@@ -88,6 +93,8 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, takeoverHours: cfg.takeoverHours,
   });
   const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
+  // Folder housekeeping edits the account's own folders, never a chat: the raw transport, ON or OFF.
+  const folders = new HumanReplyFolders({ transport: c.transport, titles: cfg.humanReplyFolders ?? [], log: c.log.child({ mod: 'folders' }) });
   // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.
   const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart, status: () => status() });
   const otherCopy = new OtherCopyDetector();
@@ -106,6 +113,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}, ${greetingsSent} greeting${greetingsSent === 1 ? '' : 's'}`,
     ];
     if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
+    if (folders.enabled) lines.push(`Folders: ${folders.removed} chat${folders.removed === 1 ? '' : 's'} taken out of ${(cfg.humanReplyFolders ?? []).join(' / ')} after a human reply`);
     lines.push(seen.length
       ? `⚠️ OLD bot wording seen ${seen.length}× in the last 24h (last ${seen[seen.length - 1]!.at.toISOString().slice(11, 16)} UTC, chat ${seen[seen.length - 1]!.chatId}): another copy of the old bot is replying`
       : 'No old-bot replies seen in the last 24h');
@@ -118,6 +126,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     transport,
     requests,
     confirmations,
+    folders,
     otherCopy,
     status,
     async onMessage(msg) {
@@ -160,6 +169,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
         c.log.warn({ chat: ev.chatId, message: ev.messageId, sightings24h: otherCopy.recent(now(), 24).length }, 'ANOTHER COPY OF THE OLD BOT replied in this chat (old wording, not sent by this process)');
       }
       await requests.onOwnOutgoing(ev);
+      await folders.onHumanReply(ev.chatId);
     },
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);

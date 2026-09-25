@@ -57,6 +57,29 @@ export class FakeTransport implements Transport, ReadStateApi {
     this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), id]);
     return id;
   }
+  /** The account's chat folders: title → chat ids. */
+  readonly folders = new Map<string, Set<string>>();
+  readonly folderCalls: Array<{ chatId: string; titles: string[] }> = [];
+  failFolderEdits = 0;
+  async removeChatFromFolders(chatId: string, titles: string[]) {
+    this.folderCalls.push({ chatId, titles });
+    if (this.failFolderEdits > 0) {
+      this.failFolderEdits--;
+      throw new Error('FLOOD_WAIT_5');
+    }
+    const left: string[] = [];
+    for (const title of titles) {
+      const chats = this.folders.get(title);
+      if (!chats?.has(chatId)) continue;
+      chats.delete(chatId);
+      if (!chats.size) this.folders.delete(title); // Telegram keeps no empty folder
+      left.push(title);
+    }
+    return left;
+  }
+  fileChat(title: string, chatId: string) {
+    this.folders.set(title, (this.folders.get(title) ?? new Set()).add(chatId));
+  }
   async seenByHuman(chatId: string, messageId: number) {
     return (this.readUpTo.get(chatId) ?? 0) >= messageId;
   }

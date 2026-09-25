@@ -6,6 +6,7 @@ import type { Logger } from 'pino';
 import type { InboundMessage, MediaKind, MediaRef, ReplySnapshot } from '../../domain/messages.js';
 import { TELEGRAM_TEXT_LIMIT, type ReadStateApi, type SendOptions, type Transport, type TransportHandlers } from '../transport.js';
 import { KeyedBuckets, TokenBucket } from '../../util/rateLimiter.js';
+import { findFolder, folderHas, folderList, folderTitle, folderWithoutChat } from './folders.js';
 import { ReadTracker } from './readState.js';
 import type { SessionStore } from './sessionStore.js';
 
@@ -450,6 +451,21 @@ export class UserTransport implements Transport, ReadStateApi {
       flying.delete(tracked);
       if (!flying.size) this.inFlight.delete(chatId);
     }
+  }
+
+  async removeChatFromFolders(chatId: string, titles: string[]): Promise<string[]> {
+    const client = this.requireClient();
+    const filters = folderList(await client.invoke(new Api.messages.GetDialogFilters()));
+    const left: string[] = [];
+    for (const title of titles) {
+      const folder = findFolder(filters, title);
+      if (!folder || !folderHas(folder, chatId)) continue;
+      const next = folderWithoutChat(folder, chatId);
+      // No filter = delete: Telegram does not allow a folder with no chats in it.
+      await client.invoke(new Api.messages.UpdateDialogFilter(next ? { id: folder.id, filter: next } : { id: folder.id }));
+      left.push(folderTitle(folder));
+    }
+    return left;
   }
 
   async recentOutgoing(chatId: string, limit: number): Promise<number[]> {

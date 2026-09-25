@@ -86,6 +86,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       staleSeconds: env.STALE_MESSAGE_SECONDS,
       reopenHours: env.CASE_REOPEN_HOURS,
       takeoverHours: env.HUMAN_TAKEOVER_HOURS,
+      humanReplyFolders: env.HUMAN_REPLY_FOLDERS.split(',').map((s) => s.trim()).filter(Boolean),
       version,
       transportStats: () => ({ reconnects: transport.reconnectCount, lastUpdateAt: transport.lastUpdateAt }),
     },
