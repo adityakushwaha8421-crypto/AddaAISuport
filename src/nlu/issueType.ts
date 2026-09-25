@@ -30,7 +30,7 @@ Decide from the DIRECTION the money was meant to move, never from the mere prese
 - "withdrawal": money LEFT the wallet (withdraw / nikala / payout / winnings) and has not REACHED the customer's bank account.
   Examples: "Withdrawal ka paisa nahi aaya", "Mere paise account me nahi aaye", "Withdraw kiya tha but receive nahi hua", "Mere paise kaha gaye", "Amount bank me credit nahi hua", "winning nahi mili", "payout pending".
 - "match": anything about a match, contest, points, lineup, players, result, ranking or prize distribution — even when money is also mentioned (a refund for a cancelled match is "match").
-- "other": login, OTP, KYC, app problems, account ban, general questions, greetings, thanks, complaints with no money direction, bonus/cashback questions.
+- "other": login, OTP, KYC, app problems, account ban, general questions, greetings, thanks, complaints with no money direction, bonus/cashback questions — and ANY question, request or statement in which nothing went wrong, even when it names deposit or withdrawal: "deposit kaise kare", "how to withdraw", "increase my withdrawal amount/limit", "minimum withdrawal kitna hai", "withdrawal time kya hai", "maine withdrawal kiya", "payment kar diya" (a payment was made, no complaint). A case exists only when money that should have shown up or arrived has not, or a payment/withdrawal failed, is pending or was deducted.
 - "unclear": money is the topic but even with the context you cannot tell which way it moved ("amount credit nahi hua" alone).
 
 "Mere paise nahi aaye" with no other clue is a withdrawal: money the customer was waiting to receive. Reply with JSON only.`;
@@ -59,9 +59,12 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
   if (detectMatchIssue(text)) return { category: 'match', source: 'lexical' };
 
   const dir = moneyDirection(lexical);
-  if (dir.type && dir.named) return { type: dir.type, category: dir.type, source: 'lexical' };
+  // Decisive: the direction is named AND something went wrong. "Increase my withdrawal amount",
+  // "deposit kaise kare", "maine withdrawal kiya" name a direction and no problem: a question or a
+  // request, left to the model (or to nobody).
+  if (dir.type && dir.named && dir.problem) return { type: dir.type, category: dir.type, source: 'lexical' };
 
-  // Context: "paisa nahi aaya" / "abhi tak nahi hua" after "kal withdraw kiya tha" is about that withdrawal.
+  // Context: "paisa nahi aaya" / "abhi tak nahi hua" / "status?" after "kal withdraw kiya tha" is about that withdrawal.
   const history = (ctx.history ?? []).slice(-RECENT_HISTORY);
   const vague = dir.moneyTopic || /\b(?:abhi|abi|ab)\s+tak\b|\bkab\s+tak\b|\bstill\b|\byet\b|\bpending\b|\bstatus\b|\bupdate\b|\bkuch\s+hua\b|\bhua\s+kya\b|\bkya\s+hua\b/.test(lexical);
   if (vague) {
@@ -72,6 +75,11 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
       if (d.type && d.named) return { type: d.type, category: d.type, source: 'context' };
     }
   }
+
+  // No sign that anything went wrong (nothing missing, pending, failed, deducted, rejected, "kab
+  // aayega"): a question, a request or a statement — "deposit kaise kare", "increase my withdrawal
+  // amount", "maine withdrawal kiya". Not a case, whatever direction it names; the model is not asked.
+  if (!dir.problem) return { category: 'other', source: 'none' };
 
   const words = lexical.split(' ').filter(Boolean).length;
   if (llm?.available && words >= 2) {
@@ -86,7 +94,7 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
       log.warn({ err }, 'issue classification by the model failed; using the lexical reading only');
     }
   }
-  // No model (or it failed): the scorer's unnamed lean stands ("mere paise nahi aaye" → withdrawal).
-  if (dir.type) return { type: dir.type, category: dir.type, source: 'lexical' };
+  // No model (or it failed): the scorer's unnamed lean stands when something went wrong ("mere paise nahi aaye" → withdrawal).
+  if (dir.type && dir.problem) return { type: dir.type, category: dir.type, source: 'lexical' };
   return { category: dir.moneyTopic ? 'unclear' : 'other', source: 'none' };
 }

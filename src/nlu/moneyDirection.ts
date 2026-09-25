@@ -11,7 +11,9 @@
  * weighted: a named direction (2) outweighs a generic "money didn't come" (1), which on its own
  * describes money the customer was waiting to receive, i.e. a payout. Cues that fit both sides
  * ("credit nahi hua", "amount reflect nahi hua") score nothing, so the caller asks instead of
- * guessing. Input is the lexical form (lower-case, punctuation stripped).
+ * guessing. A direction is only "named" when the message also says something went wrong; "increase
+ * my withdrawal amount" or "deposit kaise kare" name a direction and no problem — not a case.
+ * Input is the lexical form (lower-case, punctuation stripped).
  */
 
 export interface MoneyDirection {
@@ -21,6 +23,8 @@ export interface MoneyDirection {
   type?: 'deposit' | 'withdrawal';
   /** A cue that names the direction outright (not just "money didn't come"). */
   named: boolean;
+  /** Something went wrong: not arrived / not showing / pending / failed / deducted / "kab aayega". A direction without this is a question or a request. */
+  problem: boolean;
   /** Money is the topic, even when no direction can be read. */
   moneyTopic: boolean;
 }
@@ -105,6 +109,13 @@ const WITHDRAWAL_GENERIC: Array<[RegExp, number]> = [
   [rx(String.raw`\b(?:kab|kabtak|कब)(?:\s+tak)?\s+(?:aayega|ayega|aega|aaega|milega|aayenge|milenge|आएगा|मिलेगा|आएंगे)\b`), 1],
 ];
 
+/**
+ * Something went wrong: money did not arrive / show, is pending, failed, was deducted, "kab aayega".
+ * Without one of these a message only NAMES a direction ("increase my withdrawal amount",
+ * "deposit kaise kare", "withdrawal") — a question or a request, not a case.
+ */
+const PROBLEM = rx(String.raw`\b(?:${NOT}|pending|pendng|processing|process\s+me|stuck|hold|atka|atke|atki|ruka|ruke|ruki|fail\w*|reject\w*|cancel\w*|decline\w*|unsuccess\w*|problem|problm|issue|isue|dikkat|dikat|samasya|pareshan\w*|complain\w*|galat|wrong|missing|gayab|kat\w*|cut|deduct\w*|debit\w*|minus|kam|empty|khali|khaali|zero|0|same|still|yet|abhi\s+tak|abi\s+tak|ab\s+tak|kab(?:\s*tak)?\s+(?:aayega|ayega|aega|aaega|milega|aayenge|milenge|aayegi|aegi|आएगा|मिलेगा|आएंगे)|kab\s*tak|kaha|kahan|kahaan|kidhar|gone|went|lost|kho\s+gaya|chala\s+gaya|chale\s+gaye|nikal\s+gaya|nikal\s+gaye|wapas|wapis|refund\w*|late|delay\w*|der|slow|error|double|twice|do\s+baar|dobara|नहीं|नही|ना|पेंडिंग|अटका|अटके|रुका|रुके|फेल|रिजेक्ट|गलत|कट|कटे|कहाँ|कहां|खाली|समस्या|दिक्कत|वापस|रिफंड|देर)\b`);
+
 /** Money is what the message is about, even when no direction can be read. */
 const MONEY_TOPIC = rx(String.raw`\b(?:${MONEY}|payment|paymnt|balance|balence|credit\w*|refund\w*|bonus|cashback|transaction|txn|wallet|walet|पेमेंट|बैलेंस|क्रेडिट|रिफंड|बोनस)\b`);
 /** Money that moves through the wallet — a refund, bonus or cashback "not received" points nowhere in particular. */
@@ -124,5 +135,5 @@ export function moneyDirection(t: string): MoneyDirection {
   const margin = Math.abs(deposit - withdrawal);
   const type = best > 0 && margin >= 1 ? (deposit > withdrawal ? 'deposit' : 'withdrawal') : undefined;
   const named = type === 'deposit' ? hasNamed(DEPOSIT_CUES, t) : type === 'withdrawal' ? hasNamed(WITHDRAWAL_CUES, t) : false;
-  return { deposit, withdrawal, type, named, moneyTopic: best > 0 || MONEY_TOPIC.test(t) };
+  return { deposit, withdrawal, type, named, problem: PROBLEM.test(t), moneyTopic: best > 0 || MONEY_TOPIC.test(t) };
 }

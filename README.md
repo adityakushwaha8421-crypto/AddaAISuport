@@ -10,7 +10,10 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    misspellings (`src/nlu/moneyDirection.ts`), after ruling out match problems
    (`src/nlu/matchIssue.ts`); a vague follow-up ("paisa nahi aaya", "abhi tak nahi hua") takes its
    direction from the customer's recent messages; only when none of that is decisive is the model
-   asked once, with that history as context (`src/nlu/issueType.ts`). Phrase tables:
+   asked once, with that history as context (`src/nlu/issueType.ts`). A case also needs a sign that
+   something went wrong (not arrived, not showing, pending, failed, deducted, rejected, "kab
+   aayega"): a message that only names deposit or withdrawal — "increase my withdrawal amount",
+   "deposit kaise kare", "maine withdrawal kiya" — is a question or a request and gets nothing. Phrase tables:
    `tests/helpers/issuePhrases.ts`; live accuracy run: `RUN_LLM_EVALS=1 npm test -- tests/evals`. After that it is
    silent in that case: no acknowledgements, reminders, status updates or follow-ups, whatever the
    customer writes or sends. The human team handles everything from there.

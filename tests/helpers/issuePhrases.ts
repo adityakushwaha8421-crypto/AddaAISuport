@@ -50,6 +50,9 @@ export const OTHER = [
   'referral bonus kab milega', 'password bhool gaya', 'app update nahi ho raha', 'human se baat karao', 'kuch bhi random 12345',
   // "add" with no money behind it is a request, not a payment (a customer asked for Kabaddi and got a deposit request)
   'Sir app mein Kabaddi to add karo', 'kabaddi add karo', 'app me cricket add karo', 'sir ye player add karo', 'contest add karo', 'add me in group', 'app me kabaddi kab aayega',
+  // names a direction, reports no problem: a question or a request (a customer asking for a higher withdrawal limit got the withdrawal request)
+  'Increase my withdrawal amount in app', 'withdrawal limit badhao', 'minimum withdrawal kitna hai', 'deposit kaise kare', 'how to withdraw money', 'maine withdrawal kiya',
+  'withdrawal time kya hai', 'deposit bonus milega kya', 'deposit offer kya hai', 'withdrawal', 'deposit',
 ];
 
 /** Money is the topic, but neither side is named: with no context the agent must not guess. */
