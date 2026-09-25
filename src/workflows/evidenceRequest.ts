@@ -8,7 +8,7 @@ import { detectLanguage } from '../nlu/normalize.js';
 import { greetingText, requestText, type Language } from '../response/requests.js';
 import { escapeHtml } from '../response/html.js';
 import type { Store, UserRecord } from '../storage/types.js';
-import type { ReadStateApi, Transport } from '../telegram/transport.js';
+import type { OutgoingRef, ReadStateApi, Transport } from '../telegram/transport.js';
 
 /** "Never expires": HUMAN_TAKEOVER_HOURS=0. */
 const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
@@ -69,7 +69,17 @@ export class EvidenceRequestWorkflow {
     const stale = this.o.staleSeconds ?? 0;
     if (stale > 0 && now.getTime() - msg.date.getTime() > stale * 1000) return 'stale';
     let user = await store.users.get(msg.userId);
-    if (user?.humanTakeoverUntil && user.humanTakeoverUntil > now) return 'human';
+    if (user?.humanTakeoverUntil && user.humanTakeoverUntil > now) {
+      // A takeover never reaches further than `takeoverHours` from a human's message. One that does
+      // is left over from an older rule ("until the resume command") and would silence this customer
+      // for ever: it is dropped here, once, and the message is handled on its merits.
+      if (this.takeoverIsStale(user.humanTakeoverUntil, now)) {
+        await store.users.setHumanTakeover(msg.userId, undefined);
+        clog.warn({ until: user.humanTakeoverUntil.toISOString() }, 'dropped a human takeover that could never expire (older rule); this customer can be answered again');
+      } else {
+        return 'human';
+      }
+    }
     // First contact: is a human on this account already talking to this customer? Then the chat is theirs.
     if (user && !user.conversationChecked) {
       const fresh = await this.freshConversation(user.id, msg.chatId, now, clog);
@@ -167,10 +177,16 @@ export class EvidenceRequestWorkflow {
     }
   }
 
-  /** A human's chat stays theirs until this time. */
-  private takeoverUntil(now: Date): Date {
+  /** A human's chat stays theirs until this time, counted from the human's message. */
+  private takeoverUntil(humanMessageAt: Date): Date {
     const hours = this.o.takeoverHours ?? 24;
-    return hours > 0 ? new Date(now.getTime() + hours * 3_600_000) : FAR_FUTURE;
+    return hours > 0 ? new Date(humanMessageAt.getTime() + hours * 3_600_000) : FAR_FUTURE;
+  }
+
+  /** Beyond what any human message could have set under the current rule. */
+  private takeoverIsStale(until: Date, now: Date): boolean {
+    const hours = this.o.takeoverHours ?? 24;
+    return hours > 0 && until.getTime() > now.getTime() + hours * 3_600_000;
   }
 
   /** The account itself wrote in a customer chat: a human is handling it. The agent stays out for `takeoverHours` from this message. */
@@ -186,9 +202,12 @@ export class EvidenceRequestWorkflow {
   }
 
   /**
-   * Once per customer: does the chat already hold messages from this account that the agent did not
-   * send (a human's)? Then the conversation is theirs for `takeoverHours`. 'unknown' when
-   * Telegram could not be asked: silence for this turn, checked again next time.
+   * Once per customer: is a human on this account talking to them right now? The chat's recent
+   * Telegram history is read; a message from the account that the agent did not send, younger than
+   * `takeoverHours`, is a human's, and the chat is theirs for `takeoverHours` from that message.
+   * Older human messages are history — a reply from last month does not make the conversation
+   * theirs today. 'unknown' when Telegram could not be asked: silence for this turn, checked again
+   * next time.
    */
   private async freshConversation(userId: string, chatId: string, now: Date, log: Logger): Promise<'fresh' | 'human' | 'unknown'> {
     const { store } = this.o;
@@ -196,7 +215,7 @@ export class EvidenceRequestWorkflow {
       await store.users.setConversationChecked(userId, now);
       return 'fresh';
     }
-    let outgoing: number[];
+    let outgoing: OutgoingRef[];
     try {
       outgoing = await this.o.transport.recentOutgoing(chatId, 30);
     } catch (err) {
@@ -209,9 +228,12 @@ export class EvidenceRequestWorkflow {
       ...(await store.messages.recent(chatId, 200)).filter((m) => m.direction === 'out').map((m) => m.telegramMessageId),
       ...(await store.requests.listOpen(chatId)).map((r) => r.telegramMessageId).filter((id): id is number => id !== undefined),
     ]);
-    if (!outgoing.some((id) => !ours.has(id))) return 'fresh';
-    await store.users.setHumanTakeover(userId, this.takeoverUntil(now));
-    log.info({ chat: chatId, humanMessages: outgoing.filter((id) => !ours.has(id)).length }, 'existing conversation: a human already wrote in this chat; the agent stays out');
+    const hours = this.o.takeoverHours ?? 24;
+    const human = outgoing.filter((m) => !ours.has(m.id) && (hours === 0 || now.getTime() - m.date.getTime() < hours * 3_600_000));
+    if (!human.length) return 'fresh';
+    const latest = human.reduce((a, b) => (b.date > a.date ? b : a));
+    await store.users.setHumanTakeover(userId, this.takeoverUntil(latest.date));
+    log.info({ chat: chatId, humanMessages: human.length, latestHumanMessage: latest.date.toISOString() }, 'existing conversation: a human wrote in this chat recently; the agent stays out');
     return 'human';
   }
 

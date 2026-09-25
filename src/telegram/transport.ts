@@ -37,8 +37,8 @@ export interface Transport {
   start(handlers: TransportHandlers): Promise<void>;
   stop(): Promise<void>;
   sendText(chatId: string, text: string, opts?: SendOptions): Promise<{ messageId: number }>;
-  /** Ids of the messages this account sent in the chat, among its most recent `limit` messages (is a human already talking to this customer?). */
-  recentOutgoing?(chatId: string, limit: number): Promise<number[]>;
+  /** The messages this account sent in the chat, among its most recent `limit` messages, with when (is a human already talking to this customer?). */
+  recentOutgoing?(chatId: string, limit: number): Promise<OutgoingRef[]>;
   /**
    * Take the chat out of every one of the account's chat folders with these titles that it is in.
    * Returns the titles it left. Telegram rejects an empty folder, so removing the last chat deletes it.
@@ -47,6 +47,12 @@ export interface Transport {
   /** The Telegram profile of this user id, as the account sees it; undefined when Telegram does not know them to this account. */
   userProfile?(userId: string): Promise<TelegramUserProfile | undefined>;
   healthy(): boolean;
+}
+
+/** One message this account sent in a chat. */
+export interface OutgoingRef {
+  id: number;
+  date: Date;
 }
 
 /** What Telegram shows for a user: used to confirm the right customer before the solved note. */

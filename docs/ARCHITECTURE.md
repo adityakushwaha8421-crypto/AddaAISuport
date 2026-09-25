@@ -25,8 +25,9 @@ app.ts ─ onMessage:  admin command? → control/adminCommands.ts (replies thro
         ─ onSupportMessage / onExportForward: log only.
 
 workflows/evidenceRequest.ts (per customer message, in this order; any other outcome = silence):
-  bot_enabled fresh? → not stale? → no human takeover? → first contact: no human message already in the
-  chat's Telegram history (recentOutgoing minus what we sent)? → has text? → detect language →
+  bot_enabled fresh? → not stale? → no human takeover (one further ahead than HUMAN_TAKEOVER_HOURS is
+  stale, dropped)? → first contact: no human message younger than HUMAN_TAKEOVER_HOURS in the chat's
+  Telegram history (recentOutgoing minus what we sent; takeover runs from that message)? → has text? → detect language →
   open request in this chat (either type, younger than CASE_REOPEN_HOURS)? → silent, no model call →
   bare greeting (nlu/greeting.ts)? → answered once (kind 'greeting', users.greeted_at) only if nothing
   but greetings was said in the chat within the window and no greeting was answered in it; else silent →

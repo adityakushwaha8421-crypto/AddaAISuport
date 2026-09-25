@@ -10,8 +10,8 @@ export const NOW = new Date('2026-09-23T12:00:00+05:30');
 export class FakeTransport implements Transport, ReadStateApi {
   readonly sent: Array<{ chatId: string; text: string; kind?: string; replyTo?: number }> = [];
   readonly readUpTo = new Map<string, number>();
-  /** Messages a human sent from the account in a chat before the agent ever saw it. */
-  readonly humanHistory = new Map<string, number[]>();
+  /** Messages a human sent from the account in a chat before the agent ever saw it, with when. */
+  readonly humanHistory = new Map<string, Array<{ id: number; date: Date }>>();
   failSends = 0;
   failHistoryChecks = 0;
   handlers?: TransportHandlers;
@@ -43,18 +43,18 @@ export class FakeTransport implements Transport, ReadStateApi {
       this.failHistoryChecks--;
       throw new Error('FLOOD_WAIT_5');
     }
-    const ownIds = this.sent.reduce<number[]>((acc, s, i) => (s.chatId === chatId ? [...acc, this.idOf(chatId, i)] : acc), []);
-    return [...ownIds, ...(this.humanHistory.get(chatId) ?? [])].sort((a, b) => b - a).slice(0, limit);
+    const own = this.sent.reduce<Array<{ id: number; date: Date }>>((acc, s, i) => (s.chatId === chatId ? [...acc, { id: this.idOf(chatId, i), date: NOW }] : acc), []);
+    return [...own, ...(this.humanHistory.get(chatId) ?? [])].sort((a, b) => b.id - a.id).slice(0, limit);
   }
   /** The id a send got: sends are recorded in order, ids per chat are sequential across in+out. */
   private idOf(chatId: string, sentIndex: number) {
     return this.sentIds.get(`${chatId}:${sentIndex}`) ?? 0;
   }
   private readonly sentIds = new Map<string, number>();
-  /** A human already wrote in this chat from the account (before the agent ran). */
-  humanWroteEarlier(chatId: string): number {
+  /** A human already wrote in this chat from the account (before the agent ran), at `date`. */
+  humanWroteEarlier(chatId: string, date = NOW): number {
     const id = this.nextId(chatId);
-    this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), id]);
+    this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), { id, date }]);
     return id;
   }
   /** Telegram's profiles: whoever wrote to the account is known; tests may set others. */

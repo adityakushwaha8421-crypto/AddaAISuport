@@ -234,3 +234,55 @@ describe('deposit: asked once, across restarts too', () => {
     expect(repliesTo('quiet')).toHaveLength(1);
   });
 });
+
+/**
+ * Root causes found on the live account on 2026-09-25 (log + data/users.json): customers with a
+ * clear deposit message got no request because (1) a takeover from the older "until the resume
+ * command" rule was stored as never expiring, and (2) a human reply from any time in the past made
+ * the chat "an existing conversation". Both must never silence a customer again.
+ */
+describe('a clear deposit message is answered: nothing stale silences the customer', () => {
+  const DEPOSITS = ['Deposit is not done yet after transfer money', 'deposit not done', 'I transferred money but deposit is pending', 'money transferred but not deposited', 'deposit not received', 'Paise add nahi hue', 'payment cut my account 300 not available my wallet'];
+
+  it('the screenshot phrase and its variants each get the deposit request', async () => {
+    build();
+    for (const [i, m] of DEPOSITS.entries()) {
+      expect(await say(`dep-${i}`, m), m).toBe('requested');
+      expect(repliesTo(`dep-${i}`), m).toHaveLength(1);
+      expect(repliesTo(`dep-${i}`)[0], m).toMatch(/deposit|Deposit/); // in the customer's language
+    }
+  });
+
+  it('a takeover that could never expire (stored by the older rule) is dropped and the customer is answered', async () => {
+    build();
+    await store.users.upsert({ id: '803897666', chatId: '803897666', humanTakeoverUntil: new Date('9999-12-31T00:00:00Z'), conversationChecked: now });
+    expect(await say('803897666', 'Deposit is not done yet after transfer money')).toBe('requested');
+    expect((await store.users.get('803897666'))?.humanTakeoverUntil).toBeUndefined();
+    // A genuine, current takeover is still honoured.
+    await app.onOwnOutgoing({ chatId: '803897666', messageId: t.nextId('803897666'), text: 'dekh raha hoon' });
+    advance(60);
+    expect(await say('803897666', 'deposit nahi hua')).toBe('human');
+    advance(48 * 60); // the takeover expires like any other (and the first case is past its window)
+    expect(await say('803897666', 'deposit nahi hua')).toBe('requested');
+  });
+
+  it("a human's reply from days ago does not make the chat theirs today; one from an hour ago does, until 24 h after it", async () => {
+    build();
+    t.humanWroteEarlier('old', new Date(now.getTime() - 3 * 24 * 3_600_000));
+    expect(await say('old', 'deposit not received')).toBe('requested');
+    t.humanWroteEarlier('recent', new Date(now.getTime() - 60 * 60_000));
+    expect(await say('recent', 'deposit not received')).toBe('existing_conversation');
+    advance(23 * 60 + 1); // 24 h after the human's message, not after the check
+    expect(await say('recent', 'deposit not received')).toBe('requested');
+  });
+
+  it('with HUMAN_TAKEOVER_HOURS=0 (for good) the old rules still hold: any human message ever, and a forever takeover, keep the chat theirs', async () => {
+    store = new MemoryStore();
+    t = new FakeTransport();
+    app = assemble({ store, transport: t, log: silentLogger, clock: () => now, readState: t }, { adminIds: [ADMIN], supportChatId: SUPPORT, exportChatId: EXPORT_BOT, takeoverHours: 0 });
+    t.humanWroteEarlier('ever', new Date(now.getTime() - 30 * 24 * 3_600_000));
+    expect(await say('ever', 'deposit nahi hua')).toBe('existing_conversation');
+    await store.users.upsert({ id: 'f', chatId: 'f', humanTakeoverUntil: new Date('9999-12-31T00:00:00Z'), conversationChecked: now });
+    expect(await say('f', 'deposit nahi hua')).toBe('human');
+  });
+});

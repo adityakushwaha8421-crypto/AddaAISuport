@@ -62,10 +62,14 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   the request the chat is **completely silent**: another complaint, a different kind of problem, a
   question or a file all get nothing. The team handles it.
 - A human wrote in that chat from the account: the agent stays out of it for `HUMAN_TAKEOVER_HOURS` (24) counted from the human's latest message (0 = for good).
-- On a customer's first message, the chat's Telegram history already holds a message from this
-  account that the agent did not send: a human is already talking to them, so the chat is theirs
-  for the same `HUMAN_TAKEOVER_HOURS`. If the history cannot be read, the agent stays silent for that
-  message and checks again on the next one.
+- On a customer's first message, the chat's Telegram history holds a message from this account
+  that the agent did not send and that is younger than `HUMAN_TAKEOVER_HOURS`: a human is talking to
+  them right now, so the chat is theirs for `HUMAN_TAKEOVER_HOURS` from that message. A human reply
+  older than that is history and does not silence the customer. If the history cannot be read, the
+  agent stays silent for that message and checks again on the next one.
+- A stored takeover that reaches further than `HUMAN_TAKEOVER_HOURS` ahead cannot come from the
+  current rule (it is left over from the removed "until `/ai`" rule) and is dropped the next time
+  the customer writes, so nobody stays silenced for ever.
 - A human already read the message on Telegram (`REPLY_ONLY_TO_UNREAD`).
 - The message is older than `STALE_MESSAGE_SECONDS` (300) when handled: a restart or reconnect catch-up never answers old messages.
 - The message has no text (a bare screenshot or file says nothing about the issue).

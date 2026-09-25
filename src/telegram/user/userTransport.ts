@@ -4,7 +4,7 @@ import { NewMessage, Raw, type NewMessageEvent } from 'telegram/events/index.js'
 import { LogLevel } from 'telegram/extensions/Logger.js';
 import type { Logger } from 'pino';
 import type { InboundMessage, MediaKind, MediaRef, ReplySnapshot } from '../../domain/messages.js';
-import { TELEGRAM_TEXT_LIMIT, type ReadStateApi, type SendOptions, type TelegramUserProfile, type Transport, type TransportHandlers } from '../transport.js';
+import { TELEGRAM_TEXT_LIMIT, type OutgoingRef, type ReadStateApi, type SendOptions, type TelegramUserProfile, type Transport, type TransportHandlers } from '../transport.js';
 import { KeyedBuckets, TokenBucket } from '../../util/rateLimiter.js';
 import { findFolder, folderHas, folderList, folderTitle, folderWithoutChat } from './folders.js';
 import { ReadTracker } from './readState.js';
@@ -481,10 +481,10 @@ export class UserTransport implements Transport, ReadStateApi {
     return left;
   }
 
-  async recentOutgoing(chatId: string, limit: number): Promise<number[]> {
+  async recentOutgoing(chatId: string, limit: number): Promise<OutgoingRef[]> {
     const client = this.requireClient();
     const msgs = await this.withEntityRetry(() => client.getMessages(this.peer(chatId), { limit }));
-    return msgs.filter((m): m is Api.Message => m instanceof Api.Message && !!m.out).map((m) => m.id);
+    return msgs.filter((m): m is Api.Message => m instanceof Api.Message && !!m.out).map((m) => ({ id: m.id, date: new Date(m.date * 1000) }));
   }
 
   async seenByHuman(chatId: string, messageId: number): Promise<boolean> {
