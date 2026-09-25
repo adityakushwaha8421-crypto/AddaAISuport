@@ -8,12 +8,19 @@ const pick = (lang: Language, hinglish: string, english: string, hindi: string) 
 export function requestText(type: IssueType, lang: Language): string {
   if (type === 'deposit') {
     return [
-      pick(lang, 'Sir, deposit check karne ke liye ye details bhej dijiye 🙏', 'Sir, to check the deposit please send these 🙏', 'सर, डिपॉज़िट चेक करने के लिए ये डिटेल्स भेज दीजिए 🙏'),
+      pick(lang, 'Sir, deposit check karne ke liye please ye details bhej dijiye 🙏', 'Sir, to check the deposit please send these details 🙏', 'सर, डिपॉज़िट चेक करने के लिए कृपया ये डिटेल्स भेज दीजिए 🙏'),
       '',
-      '📱 ' + pick(lang, 'Apna 10-digit registered number', 'Your 10-digit registered number', 'अपना 10 अंकों का रजिस्टर्ड नंबर'),
-      '🖼 ' + pick(lang, 'Payment screenshot', 'Payment screenshot', 'पेमेंट स्क्रीनशॉट'),
-      '📄 ' + pick(lang, 'Jis account se payment kiya uska bank statement PDF', 'Bank statement PDF of the account you paid from', 'जिस अकाउंट से पेमेंट किया उसका बैंक स्टेटमेंट PDF'),
-      '🎥 ' + pick(lang, 'Payment ki screen recording (video)', 'A screen recording (video) of the payment', 'पेमेंट की स्क्रीन रिकॉर्डिंग (वीडियो)'),
+      '📱 ' + pick(lang, 'Registered Number', 'Registered Number', 'रजिस्टर्ड नंबर'),
+      pick(lang, 'Apna 10-digit registered number bhej dijiye.', 'Please send your 10-digit registered number.', 'अपना 10 अंकों का रजिस्टर्ड नंबर भेज दीजिए।'),
+      '',
+      '🖼️ ' + pick(lang, 'Payment Screenshot', 'Payment Screenshot', 'पेमेंट स्क्रीनशॉट'),
+      pick(lang, 'Payment ka clear screenshot bhej dijiye.', 'Please send a clear screenshot of the payment.', 'पेमेंट का साफ़ स्क्रीनशॉट भेज दीजिए।'),
+      '',
+      '📄 ' + pick(lang, 'Bank Statement', 'Bank Statement', 'बैंक स्टेटमेंट'),
+      pick(lang, 'Jis bank account se payment kiya hai, uska Bank Statement PDF bhej dijiye.', 'Please send the bank statement PDF of the account you paid from.', 'जिस बैंक अकाउंट से पेमेंट किया है, उसका बैंक स्टेटमेंट PDF भेज दीजिए।'),
+      '',
+      '🎥 ' + pick(lang, 'Payment Screen Recording', 'Payment Screen Recording', 'पेमेंट स्क्रीन रिकॉर्डिंग'),
+      pick(lang, 'Payment karte waqt ki screen recording/video bhej dijiye.', 'Please send the screen recording/video taken while making the payment.', 'पेमेंट करते समय की स्क्रीन रिकॉर्डिंग/वीडियो भेज दीजिए।'),
     ].join('\n');
   }
   return [
