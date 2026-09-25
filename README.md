@@ -38,11 +38,11 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - The chat already has an open request younger than `CASE_REOPEN_HOURS` (48) — of either type. After
   the request the chat is **completely silent**: another complaint, a different kind of problem, a
   question or a file all get nothing. The team handles it.
-- A human wrote in that chat from the account (until they type `/ai` or `/bot` there, which is deleted again).
+- A human wrote in that chat from the account: the agent stays out of it for `HUMAN_TAKEOVER_HOURS` (24) counted from the human's latest message (0 = for good).
 - On a customer's first message, the chat's Telegram history already holds a message from this
   account that the agent did not send: a human is already talking to them, so the chat is theirs
-  (same `/ai` to hand back). If the history cannot be read, the agent stays silent for that message
-  and checks again on the next one.
+  for the same `HUMAN_TAKEOVER_HOURS`. If the history cannot be read, the agent stays silent for that
+  message and checks again on the next one.
 - A human already read the message on Telegram (`REPLY_ONLY_TO_UNREAD`).
 - The message is older than `STALE_MESSAGE_SECONDS` (300) when handled: a restart or reconnect catch-up never answers old messages.
 - The message has no text (a bare screenshot or file says nothing about the issue).
@@ -114,7 +114,7 @@ TEST_DATABASE_URL=postgres://… npm test   # also run the storage contract agai
 
 - `tests/unit/evidenceRequest.test.ts` — the workflow end to end: deposit/withdrawal read from
   natural phrasing in three languages, one request then silence for every follow-up, a second
-  different issue, human takeover and `/ai`, read-by-human, `/botoff`, stale messages, failed
+  different issue, human takeover and its expiry, read-by-human, `/botoff`, stale messages, failed
   sends, and the PAYMENT CONFIRMED note (exact user, once per payment, language, no User ID → nobody).
 - `tests/unit/moneyDirection.test.ts` — the phrasing tables for the direction scorer.
 - `tests/unit/receiveOnly.test.ts` — everything else is stored and gets **zero** messages; admin

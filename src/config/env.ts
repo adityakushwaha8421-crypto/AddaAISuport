@@ -63,8 +63,8 @@ const envSchema = z.object({
   CASE_REOPEN_HOURS: int(48),
   /** A message a human already read on Telegram is theirs to answer: no request for it. */
   REPLY_ONLY_TO_UNREAD: bool(true),
-  /** Typed by a human in a customer chat to hand it back to the agent (deleted again). "/bot" always works too. */
-  AI_RESUME_COMMAND: z.string().trim().min(1).default('/ai'),
+  /** After a human writes in a customer chat the agent stays out of it for this many hours, from the human's latest message. 0: for good. */
+  HUMAN_TAKEOVER_HOURS: int(24),
 
   // ── Database ────────────────────────────────────────────────────────────
   STORE: z.enum(['postgres', 'memory']).default('postgres'),

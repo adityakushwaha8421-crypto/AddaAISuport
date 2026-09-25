@@ -84,7 +84,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       exportChatId: env.EXPORT_BOT_ID,
       staleSeconds: env.STALE_MESSAGE_SECONDS,
       reopenHours: env.CASE_REOPEN_HOURS,
-      resumeCommand: env.AI_RESUME_COMMAND,
+      takeoverHours: env.HUMAN_TAKEOVER_HOURS,
       version,
       transportStats: () => ({ reconnects: transport.reconnectCount, lastUpdateAt: transport.lastUpdateAt }),
     },

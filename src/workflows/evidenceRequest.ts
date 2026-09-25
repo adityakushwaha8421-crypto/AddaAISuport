@@ -9,7 +9,7 @@ import { escapeHtml } from '../response/html.js';
 import type { Store } from '../storage/types.js';
 import type { ReadStateApi, Transport } from '../telegram/transport.js';
 
-/** A human's chat stays theirs until they hand it back with the resume command. */
+/** "Never expires": HUMAN_TAKEOVER_HOURS=0. */
 const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
 
 export type RequestOutcome =
@@ -29,7 +29,7 @@ export type RequestOutcome =
 export interface EvidenceRequestOptions {
   store: Store;
   /** The GUARDED transport: it refuses the send if the bot is OFF or messaging is disabled. */
-  transport: Pick<Transport, 'sendText' | 'deleteMessage' | 'recentOutgoing'>;
+  transport: Pick<Transport, 'sendText' | 'recentOutgoing'>;
   botSwitch: { isOnNow(): Promise<boolean> };
   llm?: LlmClient;
   /** Telegram read state: a message a human already read is theirs to answer. */
@@ -40,8 +40,8 @@ export interface EvidenceRequestOptions {
   staleSeconds?: number;
   /** An open request of the same type younger than this keeps the case silent; older, a new message may ask again. */
   reopenHours?: number;
-  /** Typed by a human in a customer chat to hand it back ("/ai"; "/bot" always works). */
-  resumeCommand?: string;
+  /** After a human writes in a customer chat the agent stays out of it for this long, counted from the human's latest message. 0: for good. */
+  takeoverHours?: number;
 }
 
 /**
@@ -117,28 +117,27 @@ export class EvidenceRequestWorkflow {
     }
   }
 
-  /** The account itself wrote in a customer chat: a human is handling it — unless it is the resume command. */
-  async onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<'takeover' | 'resumed' | 'ignored'> {
+  /** A human's chat stays theirs until this time. */
+  private takeoverUntil(now: Date): Date {
+    const hours = this.o.takeoverHours ?? 24;
+    return hours > 0 ? new Date(now.getTime() + hours * 3_600_000) : FAR_FUTURE;
+  }
+
+  /** The account itself wrote in a customer chat: a human is handling it. The agent stays out for `takeoverHours` from this message. */
+  async onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<'takeover'> {
     const { store, log } = this.o;
-    const text = (ev.text ?? '').trim().toLowerCase();
-    const resume = (this.o.resumeCommand ?? '/ai').toLowerCase();
-    if (text === resume || text === '/bot') {
-      await store.users.setHumanTakeover(ev.chatId, undefined);
-      await this.o.transport.deleteMessage?.(ev.chatId, ev.messageId).catch((err) => log.warn({ err, chat: ev.chatId }, 'could not delete the resume command message'));
-      log.info({ chat: ev.chatId }, 'chat handed back to the agent');
-      return 'resumed';
-    }
+    const now = this.now();
     // A private chat's id is the customer's id. The record may not exist yet (first contact was theirs, or a
     // restart lost it): create it, so the takeover is recorded either way.
     await store.users.upsert({ id: ev.chatId, chatId: ev.chatId });
-    await store.users.setHumanTakeover(ev.chatId, FAR_FUTURE);
-    log.info({ chat: ev.chatId }, 'a human wrote in this chat: the agent stays out until the resume command');
+    await store.users.setHumanTakeover(ev.chatId, this.takeoverUntil(now));
+    log.info({ chat: ev.chatId, hours: this.o.takeoverHours ?? 24 }, 'a human wrote in this chat: the agent stays out');
     return 'takeover';
   }
 
   /**
    * Once per customer: does the chat already hold messages from this account that the agent did not
-   * send (a human's)? Then the conversation is theirs, until the resume command. 'unknown' when
+   * send (a human's)? Then the conversation is theirs for `takeoverHours`. 'unknown' when
    * Telegram could not be asked: silence for this turn, checked again next time.
    */
   private async freshConversation(userId: string, chatId: string, now: Date, log: Logger): Promise<'fresh' | 'human' | 'unknown'> {
@@ -161,8 +160,8 @@ export class EvidenceRequestWorkflow {
       ...(await store.requests.listOpen(chatId)).map((r) => r.telegramMessageId).filter((id): id is number => id !== undefined),
     ]);
     if (!outgoing.some((id) => !ours.has(id))) return 'fresh';
-    await store.users.setHumanTakeover(userId, FAR_FUTURE);
-    log.info({ chat: chatId, humanMessages: outgoing.filter((id) => !ours.has(id)).length }, 'existing conversation: a human already wrote in this chat; the agent stays out until the resume command');
+    await store.users.setHumanTakeover(userId, this.takeoverUntil(now));
+    log.info({ chat: chatId, humanMessages: outgoing.filter((id) => !ours.has(id)).length }, 'existing conversation: a human already wrote in this chat; the agent stays out');
     return 'human';
   }
 

@@ -26,7 +26,7 @@ export interface AppConfig {
   /** See the matching env settings. */
   staleSeconds?: number;
   reopenHours?: number;
-  resumeCommand?: string;
+  takeoverHours?: number;
   /** Shown by /status. */
   version?: string;
   transportStats?: () => { reconnects: number; lastUpdateAt: Date };
@@ -62,7 +62,7 @@ export interface App {
   /** The account owner typed in Saved Messages (admin console). */
   onAdminCommand(ev: AdminCommandEvent): Promise<void>;
   onSupportMessage(msg: SupportGroupMessage): Promise<void>;
-  /** A human wrote from the account in a customer chat: the chat is theirs (or the resume command hands it back). */
+  /** A human wrote from the account in a customer chat: the chat is theirs for HUMAN_TAKEOVER_HOURS. */
   onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
   /** The export bot wrote: a valid PAYMENT CONFIRMED with a User ID tells that customer once. */
   onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
@@ -84,7 +84,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
   });
   const requests = new EvidenceRequestWorkflow({
     store: c.store, transport, botSwitch, llm: c.llm, readState: c.readState, log: c.log.child({ mod: 'evidence-request' }), clock: c.clock,
-    staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, resumeCommand: cfg.resumeCommand,
+    staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, takeoverHours: cfg.takeoverHours,
   });
   const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
   // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.

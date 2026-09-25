@@ -458,11 +458,6 @@ export class UserTransport implements Transport, ReadStateApi {
     return msgs.filter((m): m is Api.Message => m instanceof Api.Message && !!m.out).map((m) => m.id);
   }
 
-  async deleteMessage(chatId: string, messageId: number): Promise<void> {
-    const client = this.requireClient();
-    await client.deleteMessages(this.peer(chatId), [messageId], { revoke: true });
-  }
-
   async seenByHuman(chatId: string, messageId: number): Promise<boolean> {
     const known = this.reads.seen(chatId, messageId);
     if (known !== undefined) return known;

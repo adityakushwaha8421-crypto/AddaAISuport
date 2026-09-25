@@ -100,14 +100,15 @@ describe('end to end', () => {
     t.humanWroteEarlier('8000000001');
     expect(await app.onMessage(t.inbound('8000000001', 'deposit nahi hua', [], now))).toBe('existing_conversation');
     expect(await app.onMessage(t.inbound('8000000001', 'deposit nahi hua?', [], now))).toBe('human');
-    // A fresh customer gets the request; then a human answers them; the agent stays out, even for a new problem days later.
+    // A fresh customer gets the request; then a human answers them; the agent stays out for 24 hours from the human's last message.
     expect(await app.onMessage(t.inbound('8000000002', 'withdrawal nahi aaya', [], now))).toBe('requested');
     await app.onOwnOutgoing({ chatId: '8000000002', messageId: t.nextId('8000000002'), text: 'Sir, checking' });
-    minutes(3 * 24 * 60);
+    minutes(20 * 60);
     expect(await app.onMessage(t.inbound('8000000002', 'deposit nahi hua', [], now))).toBe('human');
-    // …until the team hands it back with /ai, which is deleted so the customer never sees it.
-    await app.onOwnOutgoing({ chatId: '8000000002', messageId: t.nextId('8000000002'), text: '/ai' });
-    expect(t.deleted).toHaveLength(1);
+    await app.onOwnOutgoing({ chatId: '8000000002', messageId: t.nextId('8000000002'), text: 'ho jayega' }); // the human is still on it: the clock restarts
+    minutes(20 * 60);
+    expect(await app.onMessage(t.inbound('8000000002', 'deposit nahi hua', [], now))).toBe('human');
+    minutes(10 * 60); // 30 hours after the human's last message (and the old case has aged past its window)
     expect(await app.onMessage(t.inbound('8000000002', 'deposit nahi hua', [], now))).toBe('requested');
     // Telegram unreachable for the history check: silent this turn, checked again next time.
     const { app: app2, t: t2 } = boot();

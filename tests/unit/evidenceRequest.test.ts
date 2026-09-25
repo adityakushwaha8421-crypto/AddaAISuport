@@ -106,12 +106,13 @@ describe('identify the issue, request once, then silence', () => {
     expect(repliesTo('two')).toHaveLength(2);
   });
 
-  it('a human in the chat wins: their message silences the agent until /ai; a message they already read is theirs', async () => {
+  it('a human in the chat wins: their message silences the agent for 24 hours; a message they already read is theirs', async () => {
     await say('h1', 'hello');
     await app.onOwnOutgoing({ chatId: 'h1', messageId: t.nextId('h1'), text: 'Sir, main dekh raha hoon' });
     expect(await say('h1', 'deposit nahi hua')).toBe('human');
-    await app.onOwnOutgoing({ chatId: 'h1', messageId: t.nextId('h1'), text: '/ai' });
-    expect(t.deleted).toHaveLength(1);
+    advance(23 * 60);
+    expect(await say('h1', 'deposit nahi hua')).toBe('human');
+    advance(2 * 60); // 25 hours after the human's message: the agent may act again
     expect(await say('h1', 'deposit nahi hua')).toBe('requested');
     // Read before the agent got to it.
     const m = t.inbound('h2', 'withdrawal nahi aaya', [], now);

@@ -17,7 +17,7 @@ telegram/user/userTransport.ts ── screens the sender (own account, bots, con
    ▼
 app.ts ─ onMessage:  admin command? → control/adminCommands.ts (replies through the RAW transport)
                      else → users.upsert + messages.insert (scrubbed) → workflows/evidenceRequest.ts
-        ─ onOwnOutgoing → evidenceRequest.onOwnOutgoing (human takeover / resume command)
+        ─ onOwnOutgoing → evidenceRequest.onOwnOutgoing (human takeover for HUMAN_TAKEOVER_HOURS)
         ─ onExportMessage → workflows/paymentConfirmed.ts
         ─ onSupportMessage / onExportForward: log only.
 
@@ -43,7 +43,7 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | Module | Role |
 |---|---|
 | `config/env.ts` | zod-validated environment; refuses secrets in path settings; `secretValues()` feeds the scrubber |
-| `telegram/transport.ts` | the `Transport` interface (send text, delete own message, health) and `ReadStateApi` |
+| `telegram/transport.ts` | the `Transport` interface (send text, recent outgoing ids, health) and `ReadStateApi` |
 | `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bot / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
 | `control/botSwitch.ts` | `bot_enabled` in the store's `settings` + `BOT_STATE_FILE` mirror; `isOnNow()` reads fresh; `restore()` at boot |
 | `control/adminCommands.ts` | `/boton` `/botoff` `/restart` for `ADMIN_TELEGRAM_IDS` and the owner in Saved Messages |

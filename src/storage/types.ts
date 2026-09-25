@@ -10,7 +10,7 @@ export interface UserRecord {
   languageCode?: string;
   /** Language of the customer's own messages, as last detected (the solved note is written in it). */
   preferredLanguage?: 'hinglish' | 'english' | 'hindi';
-  /** A human wrote in this chat from the account: theirs until this time (far future = until the resume command). */
+  /** A human wrote in this chat from the account: theirs until this time. */
   humanTakeoverUntil?: Date;
   /** When the chat's history was checked once for an existing human conversation. */
   conversationChecked?: Date;

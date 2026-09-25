@@ -37,8 +37,6 @@ export interface Transport {
   start(handlers: TransportHandlers): Promise<void>;
   stop(): Promise<void>;
   sendText(chatId: string, text: string, opts?: SendOptions): Promise<{ messageId: number }>;
-  /** Delete one of our own messages for both sides (a human's "/ai" command, not meant for the customer). */
-  deleteMessage?(chatId: string, messageId: number): Promise<void>;
   /** Ids of the messages this account sent in the chat, among its most recent `limit` messages (is a human already talking to this customer?). */
   recentOutgoing?(chatId: string, limit: number): Promise<number[]>;
   healthy(): boolean;
