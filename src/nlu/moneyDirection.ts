@@ -42,15 +42,21 @@ const BANK = String.raw`(?:bank|bnk|baink|khata|khate|khaate|khatey|a\/c|acc|acc
 /** "bank se" / "from my bank": the bank is where the money LEFT, not where it should arrive. */
 const BANK_AS_DESTINATION = String.raw`(?<!from\s)(?<!from\s(?:my|the|our)\s)${BANK}(?!\s+(?:se|से)\b)`;
 
+const ADD = String.raw`(?:add|ad|aad|added|adding|ऐड|एड|ऐडेड)`;
+/** A sum: "500", "500 ka", "2,000 rs". */
+const AMOUNT = String.raw`\d[\d,]*(?:\s*(?:ka|ke|rs|rupay|rupaye|rupees?|₹))?`;
+
 const DEPOSIT_WORD = rx(String.raw`\b(?:deposit\w*|deposite|dipojit|dipozit|depost|depsit|dposit|depozit|jama|जमा|डिपॉजिट|डिपॉज़िट|डिपोजिट)\b`);
 const WITHDRAW_WORD = rx(String.raw`\b(?:withdr\w*|widraw\w*|vidraw\w*|vithdraw\w*|withdrow\w*|withdrwal|wthdraw\w*|witdraw\w*|wihdraw\w*|nikaas\w*|nikas\w*|nikal\w*|nikaal\w*|payout\w*|redeem\w*|cash\s*out|cashout|निकासी|निकाल\S*|निकले|निकाले|विड्रॉ\S*|विथड्रॉ\S*|पेआउट)`);
 
 // ── Deposit: money went towards the app and the wallet does not show it ───
 const DEPOSIT_CUES: Array<[RegExp, number]> = [
   [DEPOSIT_WORD, 2],
-  // add money / add nahi hua / add kiya / नहीं जुड़ा
-  [rx(String.raw`\b(?:add|ad|aad|added|adding)\s+(?:money|cash|amount|balance|fund\w*|kiya|kia|kiye|kari|kar\w*|kr\w*|krne|hua|hue|ho|hi|diya|diye|${NOT})\b`), 2],
-  [rx(String.raw`\b${NOT}\s+(?:add|ad|aad|added|jud\w*|जुड़\S*)\b|\bजुड़े\s+नहीं|\bनहीं\s+जुड़|\b(?:ऐड|एड|ऐडेड)\s+(?:नहीं|नही|ना)|\b(?:ऐड|एड)\s+(?:किया|किए|कर)`), 2],
+  // add money / paise add nahi hue / 500 add kiya / पैसे नहीं जुड़े — "add" counts only with money as
+  // its object: "kabaddi add karo", "player add karo", "add me in group" are requests, not payments.
+  [rx(String.raw`\b${ADD}\s+(?:money|cash|amount|balance|fund\w*|rupees?|rs)\b`), 2],
+  [rx(String.raw`\b(?:${MONEY}|${AMOUNT})${W(2)}(?:${ADD}|${NOT}\s+(?:${ADD}|jud\w*|जुड़\S*|जोड़\S*)|जुड़\S*|जोड़\S*)\b`), 2],
+  [rx(String.raw`\b${ADD}${W(3)}(?:${MONEY}|${AMOUNT})\b`), 2],
   // paise daale (money put in — "details daal diye" is typing, not paying), recharge
   [rx(String.raw`\b(?:${MONEY}|\d+(?:\s*(?:ka|ke|rs|rupay|rupaye))?)${W(2)}(?:dala|daala|dale|daale|dali|daali|daal|dal|dalay|डाला|डाले|डाली)\b|\b(?:dala|daala|dale|daale|dali|daali|daal|dal|dalay|डाला|डाले|डाली)${W(2)}(?:${MONEY}|\d+)\b`), 2],
   [rx(String.raw`\brecharge\w*|\bरिचार्ज`), 2],
@@ -70,7 +76,9 @@ const DEPOSIT_CUES: Array<[RegExp, number]> = [
   [rx(String.raw`\b${NOT}\s+(?:in|into|on)\s+(?:my\s+|the\s+)?(?:${APP}|account\s+balance)\b|\b(?:game|app|id)\s+(?:me|mein|m|par|pe|में)${W(2)}${NOT}\b`), 1.5],
   // money sent/transferred to the app
   [rx(String.raw`\b(?:transfer\w*|bheja|bheje|bhej\s+diya|send|sent|ट्रांसफर|भेजा|भेजे)${W(4)}${APP}\b`), 2],
-  [rx(String.raw`\b${APP}\s+(?:me|mein|m|par|pe|ko|mai|में)${W(2)}(?:transfer\w*|bheja|bheje|daal\w*|dal\w*|add|dala|ट्रांसफर|डाल\S*|भेज\S*)`), 2],
+  [rx(String.raw`\b${APP}\s+(?:me|mein|m|par|pe|ko|mai|में)${W(2)}(?:transfer\w*|bheja|bheje|ट्रांसफर|भेज\S*)`), 2],
+  // "app me 500 daale" / "wallet me paise add kiye": put/added, with money as the object
+  [rx(String.raw`\b${APP}\s+(?:me|mein|m|par|pe|ko|mai|में)\s+(?:${MONEY}|${AMOUNT})${W(1)}(?:daal\w*|dal\w*|dala|${ADD}|डाल\S*)`), 2],
 ];
 
 // ── Withdrawal: money left the wallet and has not reached the bank ────────

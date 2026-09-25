@@ -10,6 +10,7 @@ export const DEPOSIT = [
   'wallet me paisa nahi aya payment ho gya', 'add cash nahi hua', 'transaction successful but wallet 0', 'amount add karne ke baad bhi balance nahi aaya',
   'balance me add nahi hua paisa', 'dipojit kiya tha nahi hua', 'paytm se payment kiya hai wallet me nahi dikh raha', 'add kiya 1000 abhi tak pending',
   'paise jama kiye the app me nahi aaye', 'qr scan karke pay kiya balance nahi badha', 'payment cut gaya add nahi hua', 'wallet balance zero dikha raha hai paise dale the',
+  'wallet me paise add kiye nahi aaye', 'add money nahi ho raha', 'amount add nahi hua', 'app me 500 daale the nahi aaye', 'add kiye the 300 rupees abhi tak nahi aaye',
   // English, as customers actually type it
   'Payment cut my account 300 not available my wallet', 'Payment deducted but wallet not credited', 'Money cut from account but not added to wallet',
   'Amount deducted, balance not updated', 'Payment successful but wallet not showing money', 'payment gone from account but not in game',
@@ -47,6 +48,8 @@ export const OTHER = [
   'hi', 'hello sir', 'good morning', 'thanks', 'ok', 'kya bhejna hai', 'otp nahi aaya', 'login nahi ho raha', 'app crash ho raha hai',
   'team edit nahi ho rahi', 'contest join nahi ho raha', 'kyc pending hai', 'mera account ban ho gaya', 'refund nahi aaya', 'bonus nahi mila',
   'referral bonus kab milega', 'password bhool gaya', 'app update nahi ho raha', 'human se baat karao', 'kuch bhi random 12345',
+  // "add" with no money behind it is a request, not a payment (a customer asked for Kabaddi and got a deposit request)
+  'Sir app mein Kabaddi to add karo', 'kabaddi add karo', 'app me cricket add karo', 'sir ye player add karo', 'contest add karo', 'add me in group', 'app me kabaddi kab aayega',
 ];
 
 /** Money is the topic, but neither side is named: with no context the agent must not guess. */
