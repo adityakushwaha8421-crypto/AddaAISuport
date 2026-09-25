@@ -17,6 +17,12 @@ const OLD_BOT_PHRASES: RegExp[] = [
   /welcome sir 😊/i,
   /kya help chahiye/i,
   /team check kar rahi hai|team is checking/i,
+  /voice note abhi sun nahi pa raha/i,
+  /please text mein likh dijiye/i,
+  /issue thoda detail mein bhej dijiye/i,
+  /phir main aage check karta hoon/i,
+  /kaunsa wala check karna hai/i,
+  /upar wala|neeche wala/i,
 ];
 
 export interface OtherCopySighting {
