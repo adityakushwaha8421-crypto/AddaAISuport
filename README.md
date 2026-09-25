@@ -53,7 +53,7 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Case | Requested (once) |
 |---|---|
 | Deposit | 📱 Registered Number (10-digit) · 🖼️ Payment Screenshot (clear) · 📄 Bank Statement PDF of the account paid from · 🎥 Payment Screen Recording/video — each as a titled line with a one-sentence ask |
-| Withdrawal | Withdrawal ID **or** withdrawal-history screenshot · bank statement PDF of the account the amount should have reached |
+| Withdrawal | 🧾 Withdrawal ID **or** withdrawal-history screenshot · 📄 Bank Statement PDF of the account the amount should have reached — same titled-line format |
 
 ## When the agent stays silent even for a deposit/withdrawal message
 

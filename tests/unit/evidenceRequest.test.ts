@@ -49,7 +49,7 @@ describe('identify the issue, request once, then silence', () => {
     const text = repliesTo('w1')[0]!;
     expect(text).toBe(requestText('withdrawal', 'hinglish'));
     expect(text).toMatch(/Withdrawal ID ya withdrawal history ka screenshot/);
-    expect(text).toMatch(/bank statement PDF/);
+    expect(text).toMatch(/Bank Statement PDF/);
     expect(text).not.toMatch(/registered number|screen recording|payment screenshot/i);
     expect(await say('w1', 'WD-15436-64215')).toBe('already_requested');
     expect(repliesTo('w1')).toHaveLength(1);

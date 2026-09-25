@@ -71,7 +71,7 @@ describe('end to end', () => {
     const text = t.sent[0]!.text;
     expect(text).toBe(requestText('withdrawal', 'hinglish'));
     expect(text).toMatch(/Withdrawal ID ya withdrawal history ka screenshot/);
-    expect(text).toMatch(/bank statement PDF/);
+    expect(text).toMatch(/Bank Statement PDF/);
     expect(text).not.toMatch(/registered number|payment screenshot|screen recording/i);
     minutes(5);
     for (const m of ['WD-15436-64215', 'ye statement', 'kab tak aayega', 'sir please', 'withdrawal nahi aaya', 'deposit bhi karna hai', 'hello']) expect(await say(m), m).toBe('already_requested');

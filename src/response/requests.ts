@@ -24,10 +24,13 @@ export function requestText(type: IssueType, lang: Language): string {
     ].join('\n');
   }
   return [
-    pick(lang, 'Sir, withdrawal check karne ke liye ye details bhej dijiye 🙏', 'Sir, to check the withdrawal please send these 🙏', 'सर, विड्रॉल चेक करने के लिए ये डिटेल्स भेज दीजिए 🙏'),
+    pick(lang, 'Sir, withdrawal check karne ke liye please ye details bhej dijiye 🙏', 'Sir, to check the withdrawal please send these details 🙏', 'सर, विड्रॉल चेक करने के लिए कृपया ये डिटेल्स भेज दीजिए 🙏'),
     '',
-    '🧾 ' + pick(lang, 'Withdrawal ID ya withdrawal history ka screenshot', 'Withdrawal ID or a screenshot of your withdrawal history', 'विड्रॉल ID या विड्रॉल हिस्ट्री का स्क्रीनशॉट'),
-    '📄 ' + pick(lang, 'Jis account me amount aana tha uska bank statement PDF', 'Bank statement PDF of the account the amount should have reached', 'जिस अकाउंट में अमाउंट आना था उसका बैंक स्टेटमेंट PDF'),
+    '🧾 ' + pick(lang, 'Withdrawal ID', 'Withdrawal ID', 'विड्रॉल ID'),
+    pick(lang, 'Apni Withdrawal ID ya withdrawal history ka screenshot bhej dijiye.', 'Please send your Withdrawal ID or a screenshot of your withdrawal history.', 'अपनी विड्रॉल ID या विड्रॉल हिस्ट्री का स्क्रीनशॉट भेज दीजिए।'),
+    '',
+    '📄 ' + pick(lang, 'Bank Statement', 'Bank Statement', 'बैंक स्टेटमेंट'),
+    pick(lang, 'Jis bank account me amount aana tha, uska Bank Statement PDF bhej dijiye.', 'Please send the bank statement PDF of the account the amount should have reached.', 'जिस बैंक अकाउंट में अमाउंट आना था, उसका बैंक स्टेटमेंट PDF भेज दीजिए।'),
   ].join('\n');
 }
 
