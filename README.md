@@ -8,7 +8,9 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    the bank), the agent sends the list of documents the team needs — **once** — in the customer's
    language. The issue is read from the direction of the money in Hinglish/Hindi/English with
    misspellings (`src/nlu/moneyDirection.ts`), after ruling out match problems
-   (`src/nlu/matchIssue.ts`); a vague follow-up ("paisa nahi aaya", "abhi tak nahi hua") takes its
+   (`src/nlu/matchIssue.ts`) — points, lineup, result, and settlement: winnings or a prediction not
+   credited after the match are the contest's outcome for the team, never a withdrawal case unless
+   the customer withdrew towards a bank; a vague follow-up ("paisa nahi aaya", "abhi tak nahi hua") takes its
    direction from the customer's recent messages; only when none of that is decisive is the model
    asked once, with that history as context (`src/nlu/issueType.ts`). A case also needs a sign that
    something went wrong (not arrived, not showing, pending, failed, deducted, rejected, "kab

@@ -25,15 +25,14 @@ export const WITHDRAWAL = [
   // the examples given
   'Withdrawal ka paisa nahi aaya', 'Mere paise account me nahi aaye', 'Withdraw kiya tha but receive nahi hua', 'Mere paise kaha gaye', 'Amount bank me credit nahi hua',
   // Hinglish variants
-  'withdrawal pending hai 3 din se', 'winning amount bank me nahi aaya', 'paise nikale the abhi tak nahi mile', 'bank account me transfer nahi hua',
+  'withdrawal pending hai 3 din se', 'winning amount bank me nahi aaya', 'winnings withdraw kiye account me nahi aaye', 'paise nikale the abhi tak nahi mile', 'bank account me transfer nahi hua',
   'mera withdrawal reject ho gaya paise wapas nahi aaye', 'withdraw request kiya tha status success hai par bank me kuch nahi', 'kal withdraw kiya aaj tak nahi aaya',
-  '2000 withdraw kiye account me nahi pahunche', 'mere jeete hue paise nahi mile', 'payout nahi aaya', 'paise kab aayenge withdrawal ke', 'widrawal nhi aaya',
+  '2000 withdraw kiye account me nahi pahunche', 'payout nahi aaya', 'paise kab aayenge withdrawal ke', 'widrawal nhi aaya',
   'vidraw kiya tha paisa nhi mila', 'mere paise abhi tak nahi aaye', 'amount received nahi hua bank me', 'paisa bank me nahi pahucha', 'withdrawl ho gaya but account me nahi',
   'redeem kiya tha nahi mila', 'cashout pending', 'paisa account me kab aayega', 'mere 700 rupay nahi aaye', 'withdrawal successful dikha raha hai bank me nahi aaya',
-  'nikala tha paisa abhi tak nahi aaya', 'mere paise nahi aaye', 'jeeta hua paisa account me nahi aaya', 'withdrawal 2 din se processing me hai', 'paisa pending hai',
+  'nikala tha paisa abhi tak nahi aaya', 'mere paise nahi aaye', 'withdrawal 2 din se processing me hai', 'paisa pending hai',
   // English
-  'I withdrew 1500 yesterday, nothing in my bank yet', 'withdrawal successful but not received in bank', 'my winnings have not been credited to my account',
-  'money not received in my bank account', 'payout is still pending', 'I have not got my withdrawal',
+  'I withdrew 1500 yesterday, nothing in my bank yet', 'withdrawal successful but not received in bank', 'money not received in my bank account', 'payout is still pending', 'I have not got my withdrawal',
   // Hindi
   'विड्रॉल का पैसा नहीं आया', 'मेरे पैसे बैंक में नहीं आए', 'निकासी की थी अभी तक नहीं मिली', 'पैसे निकाले थे खाते में नहीं आए', 'विथड्रॉ किया था नहीं मिला',
 ];
@@ -42,6 +41,10 @@ export const MATCH = [
   'match cancel ho gaya points nahi mile', 'lineup galat hai', 'points kam mile', 'match under review hai', 'mere points update nahi hue',
   'player missing hai team se', 'result galat aaya', 'match abandon ho gaya paise wapas nahi aaye', 'contest ka winner galat declare hua',
   'rank galat dikha raha hai', 'match extend ho gaya kyu', 'points late aa rahe hain', 'मैच का रिजल्ट गलत है', 'पॉइंट कम मिले',
+  // settlement: winnings / a prediction not credited after the match — the contest's outcome, not a payout
+  'My winning prediction has not been settled after the match ended', 'winning not settled', 'match completed but winnings not credited', 'contest settlement pending',
+  'match khatam ho gaya winning nahi mili', 'prediction win hua par paise nahi aaye', 'my prediction was correct but I did not get the winning amount', 'winnings not distributed after match',
+  'wrong prediction result', 'jeet gaya par winning nahi aayi', 'settlement kab hoga', 'mere jeete hue paise nahi mile', 'jeeta hua paisa account me nahi aaya', 'my winnings have not been credited to my account',
 ];
 
 export const OTHER = [

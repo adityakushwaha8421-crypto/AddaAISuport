@@ -8,6 +8,7 @@ export const MATCH_ISSUE_CATEGORIES = [
   'match_extension',
   'player_missing',
   'match_result',
+  'settlement',
   'other_match',
 ] as const;
 
@@ -31,6 +32,14 @@ const NOT_UPDATED =
 const LINEUP = 'lineup|line\\s+up|playing\\s+(?:11|xi|eleven)|लाइनअप';
 const LINEUP_PROBLEM = 'galat|glat|wrong|incorrect|nahi|nhi|not|late|change\\w*|missing|issue|problem|गलत|नहीं';
 
+const WINNINGS = 'winning\\w*|wining\\w*|winnig\\w*|jeet\\w*|jeeta|jeete|jeeti|prediction\\w*|predict\\w*|settle\\w*|settlement|विनिंग|जीत\\S*|सेटल\\S*|प्रेडिक्शन';
+const NOT_SETTLED = 'not|nahi|nhi|na|pending|wrong|galat|glat|incorrect|settle\\w*|credit\\w*|distribut\\w*|declar\\w*|aaya|aayi|aaye|mila|mili|mile|received|recieved|late|kab|kabhi|abhi|still|yet|नहीं|नही|पेंडिंग|गलत|कब';
+/**
+ * Winnings that went to the bank are a payout, not a settlement: "winning amount bank me nahi aaya",
+ * "winnings withdraw kiye account me nahi aaye" stay with the money-direction scorer.
+ */
+const PAYOUT_CONTEXT = /(?<!\w)(?:bank|bnk|baink|khata|khate|khaate|withdr\w*|widraw\w*|vidraw\w*|vithdraw\w*|nikal\w*|nikaal\w*|nikas\w*|payout\w*|cash\s*out|cashout|redeem\w*|बैंक|खाते|खाता|विड्रॉ\S*|विथड्रॉ\S*|निकाल\S*|निकासी|पेआउट)(?!\w)/u;
+
 /** Checked in order: the most specific reading wins ("points under review" is a review, not wrong points). */
 const RULES: Array<[MatchIssueCategory, RegExp[]]> = [
   ['match_under_review', [/(?<!\w)(?:under|in)\s+review(?!\w)/, /(?<!\w)review\s+(?:me|mein|mai|m|pe|par|ho\w*|chal\w*|lag\w*)(?!\w)/, /रिव्यू|समीक्षा/]],
@@ -52,6 +61,8 @@ const RULES: Array<[MatchIssueCategory, RegExp[]]> = [
       /(?<!\w)(?:match|contest)\s+(?:abandon\w*|cancel\w*|washed\s+out|no\s+result)(?!\w)/,
     ],
   ],
+  // Winnings / a prediction / a settlement not credited, wrong or pending after a match: the contest's outcome, handled by the team.
+  ['settlement', [near(WINNINGS, NOT_SETTLED, 5), near('wrong|galat|glat|incorrect|गलत', 'prediction\\w*|settlement|winning\\w*|प्रेडिक्शन', 2)]],
   ['other_match', [near('match\\w*|contest|मैच', 'issue|problem|dikkat|gadbad|galat|glat|wrong|error|(?:nahi|nhi)\\s+(?:dikh\\w*|chal\\w*|hua|aaya)|not\\s+(?:showing|working|updated)|समस्या|गलत|गड़बड़', 4)]],
 ];
 
@@ -62,6 +73,9 @@ const NO_PROBLEM = /(?<!\w)(?:koi|no)\s+(?:issue|problem|dikkat|gadbad)(?!\w)|(?
 export function detectMatchIssue(text: string): MatchIssue | undefined {
   const t = lexicalForm(text);
   if (!t || NO_PROBLEM.test(t)) return undefined;
-  for (const [category, patterns] of RULES) if (patterns.some((p) => p.test(t))) return { category };
+  for (const [category, patterns] of RULES) {
+    if (category === 'settlement' && PAYOUT_CONTEXT.test(t)) continue; // winnings on their way to the bank: a payout
+    if (patterns.some((p) => p.test(t))) return { category };
+  }
   return undefined;
 }
