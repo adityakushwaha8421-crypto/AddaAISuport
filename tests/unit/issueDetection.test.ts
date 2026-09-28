@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { silentLogger } from '../../src/observability/logger.js';
 import { classifyIssue } from '../../src/nlu/issueType.js';
-import { AMBIGUOUS, DEPOSIT, MATCH, OTHER, WITHDRAWAL } from '../helpers/issuePhrases.js';
+import { AMBIGUOUS, DEPOSIT, MATCH, OTHER, SPORT_REQUESTS, WITHDRAWAL } from '../helpers/issuePhrases.js';
 
 /**
  * Issue detection without the model (what runs when OPENAI_API_KEY is missing, and the first pass
@@ -32,7 +32,7 @@ describe('issue detection (offline)', () => {
 
   it('other support topics and small talk are never a deposit or withdrawal', async () => {
     const wrong: string[] = [];
-    for (const t of [...OTHER, ...AMBIGUOUS]) {
+    for (const t of [...OTHER, ...SPORT_REQUESTS, ...AMBIGUOUS]) {
       const v = await classify(t);
       if (v.type) wrong.push(`${t} -> ${v.type}`);
     }

@@ -65,6 +65,11 @@ const envSchema = z.object({
   REPLY_ONLY_TO_UNREAD: bool(true),
   /** After a human writes in a customer chat the agent stays out of it for this many hours, from the human's latest message. 0: for good. */
   HUMAN_TAKEOVER_HOURS: int(24),
+  /** File each classified customer chat into the team's chat folders (match matters → MATCH_ISSUES_FOLDER, everything else that needs a human → SUPPORT_FOLDER). */
+  CHAT_FOLDERS_ENABLED: bool(true),
+  /** Folder titles on the account, as shown in Telegram (at most 12 characters each). */
+  SUPPORT_FOLDER: z.string().trim().min(1).max(12).default('Support'),
+  MATCH_ISSUES_FOLDER: z.string().trim().min(1).max(12).default('Match issues'),
   /** Comma-separated titles of the account's chat folders a customer chat leaves once a human has replied in it. Empty: off. */
   HUMAN_REPLY_FOLDERS: z.string().default('Support,Match issues'),
 

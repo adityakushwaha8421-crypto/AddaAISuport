@@ -44,6 +44,8 @@ export interface Transport {
    * Returns the titles it left. Telegram rejects an empty folder, so removing the last chat deletes it.
    */
   removeChatFromFolders?(chatId: string, titles: string[]): Promise<string[]>;
+  /** Put the chat in the account's chat folder with this title, creating the folder when there is none. Idempotent. */
+  addChatToFolder?(title: string, chatId: string): Promise<void>;
   /** The Telegram profile of this user id, as the account sees it; undefined when Telegram does not know them to this account. */
   userProfile?(userId: string): Promise<TelegramUserProfile | undefined>;
   healthy(): boolean;

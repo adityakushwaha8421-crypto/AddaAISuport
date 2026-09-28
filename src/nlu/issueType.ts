@@ -6,7 +6,7 @@ import { lexicalForm } from './normalize.js';
 
 export type IssueType = 'deposit' | 'withdrawal';
 /** Everything a customer message can be about, as far as the agent needs to know. */
-export type IssueCategory = IssueType | 'match' | 'other' | 'unclear';
+export type IssueCategory = IssueType | 'match' | 'other' | 'unclear' | 'chitchat';
 
 export interface IssueVerdict {
   /** Set only for a deposit or a withdrawal — the two issues the agent acts on. */
@@ -29,9 +29,10 @@ Decide from the DIRECTION the money was meant to move, never from the mere prese
   Examples: "Paise add nahi hue", "Deposit nahi hua", "Payment kiya but balance nahi aaya", "Wallet me amount nahi dikh raha", "500 add kiye the nahi aaye", "paisa kat gaya wallet me nahi aaya", "recharge nahi hua", "UPI se bheja app me nahi aaya".
 - "withdrawal": money LEFT the wallet (withdraw / nikala / payout / winnings) and has not REACHED the customer's bank account.
   Examples: "Withdrawal ka paisa nahi aaya", "Mere paise account me nahi aaye", "Withdraw kiya tha but receive nahi hua", "Mere paise kaha gaye", "Amount bank me credit nahi hua", "winning nahi mili", "payout pending".
-- "match": anything about a match, contest, points, lineup, players, result, ranking, prize distribution or SETTLEMENT — winnings / a prediction not settled or not credited after the match, settlement pending, wrong prediction result — even when money is also mentioned (a refund for a cancelled match is "match"). Winnings are a "withdrawal" only when the customer withdrew them towards a bank account and they did not arrive.
+- "match": anything about a match, contest, points, lineup, players, result, ranking, prize distribution or SETTLEMENT, and any REQUEST to add, start or bring a sport, game, league, team or match to the app ("football add karo", "kabaddi kab aayega", "Mai football add karne ka baat kr rha hu") — winnings / a prediction not settled or not credited after the match, settlement pending, wrong prediction result — even when money is also mentioned (a refund for a cancelled match is "match"). Winnings are a "withdrawal" only when the customer withdrew them towards a bank account and they did not arrive.
 - "other": login, OTP, KYC, app problems, account ban, general questions, greetings, thanks, complaints with no money direction, bonus/cashback questions — and ANY question, request or statement in which nothing went wrong, even when it names deposit or withdrawal: "deposit kaise kare", "how to withdraw", "increase my withdrawal amount/limit", "minimum withdrawal kitna hai", "withdrawal time kya hai", "maine withdrawal kiya", "payment kar diya" (a payment was made, no complaint). A case exists only when money that should have shown up or arrived has not, or a payment/withdrawal failed, is pending or was deducted.
 - "unclear": money is the topic but even with the context you cannot tell which way it moved ("amount credit nahi hua" alone).
+- "chitchat": a greeting, thanks, "ok", an emoji, an acknowledgement — nothing for the team to do.
 
 "Mere paise nahi aaye" with no other clue is a withdrawal: money the customer was waiting to receive. Reply with JSON only.`;
 
@@ -40,7 +41,7 @@ const SCHEMA = {
   schema: {
     type: 'object',
     additionalProperties: false,
-    properties: { issue: { type: 'string', enum: ['deposit', 'withdrawal', 'match', 'other', 'unclear'] } },
+    properties: { issue: { type: 'string', enum: ['deposit', 'withdrawal', 'match', 'other', 'unclear', 'chitchat'] } },
     required: ['issue'],
   },
 };
@@ -76,11 +77,11 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
     }
   }
 
-  // No sign that anything went wrong (nothing missing, pending, failed, deducted, rejected, "kab
-  // aayega"): a question, a request or a statement — "deposit kaise kare", "increase my withdrawal
-  // amount", "maine withdrawal kiya". Not a case, whatever direction it names; the model is not asked.
-  if (!dir.problem) return { category: 'other', source: 'none' };
-
+  // The model reads what the message is ABOUT (for the team's folders) and, when something went
+  // wrong, which way the money moved. A case needs a sign that something went wrong (nothing
+  // missing, pending, failed, deducted, rejected, "kab aayega"): "deposit kaise kare", "increase my
+  // withdrawal amount", "maine withdrawal kiya" are questions or statements, never a case — whatever
+  // direction the model reads into them.
   const words = lexical.split(' ').filter(Boolean).length;
   if (llm?.available && words >= 2) {
     try {
@@ -88,13 +89,15 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
         ? `Earlier messages from this customer (oldest first):\n${history.map((h) => `- ${h.slice(0, 300)}`).join('\n')}\n\nLatest message:\n${text.slice(0, 1500)}`
         : text.slice(0, 1500);
       const r = await llm.json<{ issue: IssueCategory }>({ purpose: 'issue_type', system: SYSTEM, user, schema: SCHEMA, maxTokens: 20 });
-      if (r.issue === 'deposit' || r.issue === 'withdrawal') return { type: r.issue, category: r.issue, source: 'llm' };
-      if (r.issue === 'match' || r.issue === 'other' || r.issue === 'unclear') return { category: r.issue, source: 'llm' };
+      if (r.issue === 'deposit' || r.issue === 'withdrawal') return dir.problem ? { type: r.issue, category: r.issue, source: 'llm' } : { category: 'other', source: 'llm' };
+      if (r.issue === 'match' || r.issue === 'other' || r.issue === 'unclear' || r.issue === 'chitchat') return { category: r.issue, source: 'llm' };
     } catch (err) {
       log.warn({ err }, 'issue classification by the model failed; using the lexical reading only');
     }
   }
+  // A single word with no money and no problem in it ("ok", "?", "thanks") is nothing for the team.
+  if (!dir.problem) return { category: words < 2 && !dir.moneyTopic ? 'chitchat' : 'other', source: 'none' };
   // No model (or it failed): the scorer's unnamed lean stands when something went wrong ("mere paise nahi aaye" → withdrawal).
-  if (dir.type && dir.problem) return { type: dir.type, category: dir.type, source: 'lexical' };
+  if (dir.type) return { type: dir.type, category: dir.type, source: 'lexical' };
   return { category: dir.moneyTopic ? 'unclear' : 'other', source: 'none' };
 }

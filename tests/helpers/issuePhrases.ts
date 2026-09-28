@@ -51,8 +51,7 @@ export const OTHER = [
   'hi', 'hello sir', 'good morning', 'thanks', 'ok', 'kya bhejna hai', 'otp nahi aaya', 'login nahi ho raha', 'app crash ho raha hai',
   'team edit nahi ho rahi', 'contest join nahi ho raha', 'kyc pending hai', 'mera account ban ho gaya', 'refund nahi aaya', 'bonus nahi mila',
   'referral bonus kab milega', 'password bhool gaya', 'app update nahi ho raha', 'human se baat karao', 'kuch bhi random 12345',
-  // "add" with no money behind it is a request, not a payment (a customer asked for Kabaddi and got a deposit request)
-  'Sir app mein Kabaddi to add karo', 'kabaddi add karo', 'app me cricket add karo', 'sir ye player add karo', 'contest add karo', 'add me in group', 'app me kabaddi kab aayega',
+  'add me in group',
   // names a direction, reports no problem: a question or a request (a customer asking for a higher withdrawal limit got the withdrawal request)
   'Increase my withdrawal amount in app', 'withdrawal limit badhao', 'minimum withdrawal kitna hai', 'deposit kaise kare', 'how to withdraw money', 'maine withdrawal kiya',
   'withdrawal time kya hai', 'deposit bonus milega kya', 'deposit offer kya hai', 'withdrawal', 'deposit',
@@ -60,6 +59,9 @@ export const OTHER = [
   'Unable to do bank account verification as it is showing bank account is already exist, but have not added my bank account',
   'bank account verification nahi ho raha', 'bank account add nahi ho raha', 'my bank account is not verified', 'bank details galat hai', 'kyc me bank account reject ho gaya',
 ];
+
+/** A request to add or start a sport / game / team: never a payment; the model files it as a match matter, the scorer leaves it alone. */
+export const SPORT_REQUESTS = ['Sir app mein Kabaddi to add karo', 'kabaddi add karo', 'app me cricket add karo', 'sir ye player add karo', 'contest add karo', 'app me kabaddi kab aayega', 'Mai football add karne ka baat kr rha hu', 'football add karo'];
 
 /** Money is the topic, but neither side is named: with no context the agent must not guess. */
 export const AMBIGUOUS = ['amount credit nahi hua', 'credit nahi hua', 'transaction failed'];

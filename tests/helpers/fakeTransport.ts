@@ -85,6 +85,15 @@ export class FakeTransport implements Transport, ReadStateApi {
   fileChat(title: string, chatId: string) {
     this.folders.set(title, (this.folders.get(title) ?? new Set()).add(chatId));
   }
+  readonly filedCalls: Array<{ title: string; chatId: string }> = [];
+  async addChatToFolder(title: string, chatId: string) {
+    this.filedCalls.push({ title, chatId });
+    if (this.failFolderEdits > 0) {
+      this.failFolderEdits--;
+      throw new Error('FLOOD_WAIT_5');
+    }
+    this.fileChat(title, chatId);
+  }
   async seenByHuman(chatId: string, messageId: number) {
     return (this.readUpTo.get(chatId) ?? 0) >= messageId;
   }

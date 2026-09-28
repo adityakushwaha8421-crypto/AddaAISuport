@@ -6,7 +6,7 @@ import type { Logger } from 'pino';
 import type { InboundMessage, MediaKind, MediaRef, ReplySnapshot } from '../../domain/messages.js';
 import { TELEGRAM_TEXT_LIMIT, type OutgoingRef, type ReadStateApi, type SendOptions, type TelegramUserProfile, type Transport, type TransportHandlers } from '../transport.js';
 import { KeyedBuckets, TokenBucket } from '../../util/rateLimiter.js';
-import { findFolder, folderHas, folderList, folderTitle, folderWithoutChat } from './folders.js';
+import { findFolder, folderHas, folderList, folderTitle, folderWithChat, folderWithoutChat } from './folders.js';
 import { ReadTracker } from './readState.js';
 import type { SessionStore } from './sessionStore.js';
 
@@ -464,6 +464,16 @@ export class UserTransport implements Transport, ReadStateApi {
     }
     if (!(entity instanceof Api.User)) return undefined;
     return { id: entity.id.toString(), firstName: entity.firstName, lastName: entity.lastName, username: entity.username };
+  }
+
+  async addChatToFolder(title: string, chatId: string): Promise<void> {
+    const client = this.requireClient();
+    const filters = folderList(await client.invoke(new Api.messages.GetDialogFilters()));
+    const folder = findFolder(filters, title);
+    if (folder && folderHas(folder, chatId)) return;
+    const peer = await this.withEntityRetry(() => client.getInputEntity(this.peer(chatId)));
+    const next = folderWithChat(folder, filters, title, peer);
+    await client.invoke(new Api.messages.UpdateDialogFilter({ id: next.id, filter: next }));
   }
 
   async removeChatFromFolders(chatId: string, titles: string[]): Promise<string[]> {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { OpenAiLlm } from '../../src/llm/openai.js';
 import { classifyIssue, type IssueCategory } from '../../src/nlu/issueType.js';
 import { silentLogger } from '../../src/observability/logger.js';
-import { AMBIGUOUS, DEPOSIT, MATCH, OTHER, WITHDRAWAL } from '../helpers/issuePhrases.js';
+import { AMBIGUOUS, DEPOSIT, MATCH, OTHER, SPORT_REQUESTS, WITHDRAWAL } from '../helpers/issuePhrases.js';
 
 /**
  * Live evaluation against the real model (RUN_LLM_EVALS=1, OPENAI_API_KEY): the full path — scorer,
@@ -23,7 +23,8 @@ describe.skipIf(!run)('issue detection (live model)', () => {
       ...DEPOSIT.map((t): [string, IssueCategory[]] => [t, ['deposit']]), ...HARD_DEPOSIT.map((t): [string, IssueCategory[]] => [t, ['deposit']]),
       ...WITHDRAWAL.map((t): [string, IssueCategory[]] => [t, ['withdrawal']]), ...HARD_WITHDRAWAL.map((t): [string, IssueCategory[]] => [t, ['withdrawal']]),
       ...MATCH.map((t): [string, IssueCategory[]] => [t, ['match']]),
-      ...OTHER.map((t): [string, IssueCategory[]] => [t, ['other', 'unclear']]),
+      ...OTHER.map((t): [string, IssueCategory[]] => [t, ['other', 'unclear', 'chitchat']]),
+      ...SPORT_REQUESTS.map((t): [string, IssueCategory[]] => [t, ['match']]),
       ...AMBIGUOUS.map((t): [string, IssueCategory[]] => [t, ['unclear', 'other']]),
     ];
     const results = await Promise.all(cases.map(async ([t, want]) => ({ t, want, got: await classifyIssue(t, llm, silentLogger) })));

@@ -3,7 +3,7 @@ import { BotOffError } from '../control/guardedTransport.js';
 import { messageBody, type InboundMessage } from '../domain/messages.js';
 import type { LlmClient } from '../llm/client.js';
 import { isGreeting } from '../nlu/greeting.js';
-import { classifyIssue, type IssueType } from '../nlu/issueType.js';
+import { classifyIssue, type IssueCategory, type IssueType } from '../nlu/issueType.js';
 import { detectLanguage } from '../nlu/normalize.js';
 import { greetingText, requestText, type Language } from '../response/requests.js';
 import { escapeHtml } from '../response/html.js';
@@ -45,6 +45,8 @@ export interface EvidenceRequestOptions {
   reopenHours?: number;
   /** After a human writes in a customer chat the agent stays out of it for this long, counted from the human's latest message. 0: for good. */
   takeoverHours?: number;
+  /** Told what each classified message is about (the team's folders); never affects what is sent. */
+  onClassified?: (ev: { chatId: string; userId: string; category: IssueCategory }) => Promise<void>;
 }
 
 /**
@@ -116,6 +118,7 @@ export class EvidenceRequestWorkflow {
       .filter(Boolean);
     const verdict = await classifyIssue(body, this.o.llm, clog, { history });
     clog.debug({ category: verdict.category, source: verdict.source }, 'issue classified');
+    await this.o.onClassified?.({ chatId: msg.chatId, userId: msg.userId, category: verdict.category }).catch((err) => clog.warn({ err }, 'classification listener failed'));
     if (!verdict.type) return 'not_an_issue';
 
     // Last looks: a human who read the message answers it; the switch once more; then the guarded send.

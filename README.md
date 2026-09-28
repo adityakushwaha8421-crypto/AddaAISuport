@@ -84,6 +84,17 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - The message is older than `STALE_MESSAGE_SECONDS` (300) when handled: a restart or reconnect catch-up never answers old messages.
 - The message has no text (a bare screenshot or file says nothing about the issue).
 
+## Chat folders for the team
+
+Every classified customer message files the chat into one of the account's chat folders, so the
+team sees what is waiting: a match matter — points, lineup, result, settlement, or a request to add
+a sport ("football add karo", "Mai football add karne ka baat kr rha hu") — goes to
+`MATCH_ISSUES_FOLDER` (**Match issues**); a deposit/withdrawal case, any other support matter
+(login, KYC, app problems) or an unclear money message goes to `SUPPORT_FOLDER` (**Support**);
+greetings, thanks and "ok" go nowhere. Filing never sends anything to the customer. It happens once
+per classified message, only while the bot is ON (nothing is classified while OFF), and a failed
+folder edit is only logged. `CHAT_FOLDERS_ENABLED=false` turns it off.
+
 ## When a human replies: the chat leaves the team's folders
 
 The team files waiting customer chats into Telegram chat folders on the account (by default
