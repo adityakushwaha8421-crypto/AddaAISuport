@@ -62,6 +62,9 @@ export class FakeTransport implements Transport, ReadStateApi {
   async userProfile(userId: string) {
     return this.profiles.get(userId);
   }
+  async userByUsername(username: string) {
+    return [...this.profiles.values()].find((p) => p.username?.toLowerCase() === username.toLowerCase());
+  }
   /** The account's chat folders: title → chat ids. */
   readonly folders = new Map<string, Set<string>>();
   readonly folderCalls: Array<{ chatId: string; titles: string[] }> = [];

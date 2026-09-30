@@ -466,6 +466,19 @@ export class UserTransport implements Transport, ReadStateApi {
     return { id: entity.id.toString(), firstName: entity.firstName, lastName: entity.lastName, username: entity.username };
   }
 
+  async userByUsername(username: string): Promise<TelegramUserProfile | undefined> {
+    const client = this.requireClient();
+    let entity: unknown;
+    try {
+      entity = await client.getEntity(`@${username.replace(/^@/, '')}`);
+    } catch (err) {
+      this.opts.log.info({ err: (err as Error).message, username }, 'telegram has no user with this username');
+      return undefined;
+    }
+    if (!(entity instanceof Api.User) || entity.bot) return undefined;
+    return { id: entity.id.toString(), firstName: entity.firstName, lastName: entity.lastName, username: entity.username };
+  }
+
   async addChatToFolder(title: string, chatId: string): Promise<void> {
     const client = this.requireClient();
     const filters = folderList(await client.invoke(new Api.messages.GetDialogFilters()));

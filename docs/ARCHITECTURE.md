@@ -38,7 +38,7 @@ workflows/evidenceRequest.ts (per customer message, in this order; any other out
   'evidence_request') → markSent + outbound message row. A failed send removes the row.
 workflows/paymentConfirmed.ts: PAYMENT CONFIRMED → bot_enabled → the customer: by User ID (the Telegram
   profile behind it — raw transport userProfile, else the stored customer — must not contradict the
-  name/@username the confirmation gives), else by the Mobile line (users.findByMobileNumber over the
+  name/@username the confirmation gives), else by the @username (transport userByUsername; a known customer, or the name matches), else by the Mobile line (users.findByMobileNumber over the
   numbers customers typed, nlu/mobile.ts; exactly one candidate whose Telegram name/@username
   positively matches) → dedupe key in settings (order id, else a fingerprint of the text) → guarded
   sendText(kind 'payment_confirmed'): Telegram name + confirmed amount, deposit or withdrawal wording

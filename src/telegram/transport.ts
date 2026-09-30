@@ -48,6 +48,8 @@ export interface Transport {
   addChatToFolder?(title: string, chatId: string): Promise<void>;
   /** The Telegram profile of this user id, as the account sees it; undefined when Telegram does not know them to this account. */
   userProfile?(userId: string): Promise<TelegramUserProfile | undefined>;
+  /** The Telegram user who holds this @username (without the @), if any. */
+  userByUsername?(username: string): Promise<TelegramUserProfile | undefined>;
   healthy(): boolean;
 }
 

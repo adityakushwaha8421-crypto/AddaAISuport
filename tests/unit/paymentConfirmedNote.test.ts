@@ -4,7 +4,7 @@ import { silentLogger } from '../../src/observability/logger.js';
 import { solvedText } from '../../src/response/requests.js';
 import { MemoryStore } from '../../src/storage/memory.js';
 import { extractMobileNumbers } from '../../src/nlu/mobile.js';
-import { identityMatches, parseConfirmation } from '../../src/workflows/paymentConfirmed.js';
+import { identityMatches, parseConfirmation, parseCustomer } from '../../src/workflows/paymentConfirmed.js';
 import { ADMIN, EXPORT_BOT, FakeTransport, NOW, SUPPORT, customerSends } from '../helpers/fakeTransport.js';
 
 /**
@@ -214,5 +214,74 @@ describe('a confirmation without a User ID is delivered by mobile number, only w
     await app.onMessage(t.inbound('7000000208', '9330949495', [], NOW));
     expect(await confirm(confirmation('7000000207', { name: 'P Kumar' }) + '\n📱 Mobile: 9330949495')).toBe('solved');
     expect(t.sent.at(-1)!.chatId).toBe('7000000207');
+  });
+});
+
+// ── "Customer: @handle (Name)": the @username as the address ────────────────
+
+const betix = (o: { customer?: string; mobile?: string; order?: string } = {}) =>
+  `✅ PAYMENT CONFIRMED\n\n👤 Customer: ${o.customer ?? '@Sureshreddy45 (Suresh)'}\n📱 Mobile: ${o.mobile ?? '6363446223'}\n💰 Amount: ₹1,499.06\n🧾 Order: ${o.order ?? 'ILLUN-17907641975708'}\n\n✅ Confirmed by: Betix System\n🤖 @betixpay_cs_bot\n🕒 Time: 18:44\n\n🙏 Payment successfully confirmed.`;
+
+describe('the Customer line in every shape the export bot prints', () => {
+  it('the @handle is the username wherever it stands; the name is never the handle', () => {
+    expect(parseCustomer('👤 Customer: @Sureshreddy45 (Suresh)')).toEqual({ customerName: 'Suresh', customerUsername: 'Sureshreddy45' });
+    expect(parseCustomer('👤 Customer: Suresh Reddy @Sureshreddy45')).toEqual({ customerName: 'Suresh Reddy', customerUsername: 'Sureshreddy45' });
+    expect(parseCustomer('👤 Customer: P Kumar (User ID: 6135570708, no username)')).toEqual({ customerName: 'P Kumar', customerUsername: undefined });
+    expect(parseCustomer('👤 Customer: P Kumar (User ID: 6135570708, @pkumar_9)')).toEqual({ customerName: 'P Kumar', customerUsername: 'pkumar_9' });
+    expect(parseCustomer('👤 Customer: Fantasy Expert News (no username, no user id)')).toEqual({ customerName: 'Fantasy Expert News', customerUsername: undefined });
+    expect(parseCustomer('👤 Customer: @Sureshreddy45')).toEqual({ customerName: undefined, customerUsername: 'Sureshreddy45' });
+    expect(parseCustomer(undefined)).toEqual({});
+  });
+
+  it('the pasted confirmation: no User ID, @Sureshreddy45, Suresh, 6363446223, ₹1,499.06 — and the bot\'s own @handle further down is not the customer', () => {
+    expect(parseConfirmation(betix())).toEqual({ userId: undefined, orderId: 'ILLUN-17907641975708', customerName: 'Suresh', customerUsername: 'Sureshreddy45', amount: '₹1,499.06', mobile: '6363446223' });
+  });
+
+  it('the same @username is the same account, whatever the names look like', () => {
+    expect(identityMatches({ customerName: 'Suresh', customerUsername: 'Sureshreddy45' }, { firstName: 'S.R.', username: 'sureshreddy45' }, true).ok).toBe(true);
+    expect(identityMatches({ customerUsername: 'Sureshreddy45' }, { username: 'SURESHREDDY45' }, true).ok).toBe(true);
+    expect(identityMatches({ customerName: 'Suresh', customerUsername: 'Sureshreddy45' }, { firstName: 'Suresh', username: 'someone_else' }, true).ok).toBe(false);
+  });
+});
+
+describe('a confirmation without a User ID but with an @username', () => {
+  it('the pasted case: @Sureshreddy45 wrote to the account → told once, by Telegram name, with ₹1,499.06 (no mobile number needed)', async () => {
+    build();
+    t.profiles.set('7000000301', { id: '7000000301', firstName: 'Suresh', lastName: 'Reddy', username: 'Sureshreddy45' });
+    await app.onMessage(t.inbound('7000000301', 'deposit nahi hua 1499 ka', [], NOW));
+    expect(await confirm(betix())).toBe('solved');
+    expect(t.sent.at(-1)).toMatchObject({ chatId: '7000000301', kind: 'payment_confirmed' });
+    expect(t.sent.at(-1)!.text).toBe(solvedText('hinglish', { name: 'Suresh Reddy', amount: '₹1,499.06', issue: 'deposit' }));
+    expect(await store.requests.listOpen('7000000301')).toHaveLength(0);
+    expect(await confirm(betix(), 2)).toBe('duplicate');
+  });
+
+  it('an @username that never wrote to the account is taken only when the confirmation\'s name matches its Telegram name', async () => {
+    build();
+    t.profiles.set('7000000302', { id: '7000000302', firstName: 'Suresh', username: 'Sureshreddy45' });
+    expect(await confirm(betix())).toBe('solved'); // "Suresh" confirms it
+    expect(t.sent.at(-1)!.chatId).toBe('7000000302');
+    build();
+    t.profiles.set('7000000303', { id: '7000000303', firstName: 'Somebody', lastName: 'Else', username: 'Sureshreddy45' });
+    expect(await confirm(betix())).toBe('user_unverified'); // a stranger holding the handle: nobody is messaged
+    expect(customerSends(t)).toHaveLength(0);
+  });
+
+  it('Telegram has no such @username → the mobile number is the fallback, verified as before', async () => {
+    build();
+    t.profiles.set('7000000304', { id: '7000000304', firstName: 'Suresh', lastName: 'R' }); // no username on Telegram
+    await app.onMessage(t.inbound('7000000304', 'mera number 6363446223', [], NOW));
+    expect(await confirm(betix())).toBe('solved');
+    expect(t.sent.at(-1)!.chatId).toBe('7000000304');
+    build();
+    expect(await confirm(betix())).toBe('user_unverified'); // no such handle, nobody typed the number
+  });
+
+  it('a User ID still wins over the @username', async () => {
+    build();
+    t.profiles.set('7000000305', { id: '7000000305', firstName: 'Suresh', username: 'Sureshreddy45' });
+    await app.onMessage(t.inbound('7000000306', 'deposit nahi hua', [], NOW)); // P Kumar
+    expect(await confirm('✅ PAYMENT CONFIRMED\n👤 Customer: P Kumar (User ID: 7000000306)\n💰 Amount: ₹500')).toBe('solved');
+    expect(t.sent.at(-1)!.chatId).toBe('7000000306');
   });
 });
