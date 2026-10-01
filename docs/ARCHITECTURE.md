@@ -41,8 +41,8 @@ workflows/paymentConfirmed.ts: PAYMENT CONFIRMED → bot_enabled → the custome
   name/@username the confirmation gives), else by the @username (transport userByUsername; a known customer, or the name matches), else by the Mobile line (users.findByMobileNumber over the
   numbers customers typed, nlu/mobile.ts; exactly one candidate whose Telegram name/@username
   positively matches) → dedupe key in settings (order id, else a fingerprint of the text) → guarded
-  sendText(kind 'payment_confirmed'): Telegram name + confirmed amount, deposit or withdrawal wording
-  from the open case, in the user's language → requests.markSolved.
+  sendText(kind 'payment_confirmed'): Telegram name + confirmed amount, deposit wording (withdrawal
+  only when the confirmation itself says so — never from the open case), in the user's language → requests.markSolved.
 ```
 
 Boot (`index.ts`): env → logger (with secret scrubbing) → store → OpenAI client (unused) →

@@ -34,7 +34,7 @@ const confirm = (text: string, id = 1) => app.confirmations.onExportMessage({ me
 describe('reading the confirmation', () => {
   it('takes the User ID, the customer name and username, the amount and the order reference', () => {
     expect(parseConfirmation(confirmation('6135570708', { username: 'pkumar_9', order: 'ILLUN-178923603882201' }))).toEqual({
-      userId: '6135570708', orderId: 'ILLUN-178923603882201', customerName: 'P Kumar', customerUsername: 'pkumar_9', amount: '₹2,999.01', mobile: '9810822372',
+      userId: '6135570708', orderId: 'ILLUN-178923603882201', customerName: 'P Kumar', customerUsername: 'pkumar_9', amount: '₹2,999.01', mobile: '9810822372', issue: 'deposit',
     });
     expect(parseConfirmation(confirmation('6135570708'))).toMatchObject({ customerName: 'P Kumar', customerUsername: undefined, amount: '₹2,999.01' });
     expect(parseConfirmation('PAYMENT CONFIRMED\nUser ID: 6135570708\nAmount: Rs. 500')).toMatchObject({ amount: '₹500', customerName: undefined });
@@ -70,11 +70,18 @@ describe('the solved note', () => {
     expect(customerSends(t).filter((s) => s.kind === 'payment_confirmed')).toHaveLength(1);
   });
 
-  it('a withdrawal case gets the withdrawal wording; Hinglish and Hindi customers get theirs', async () => {
+  it('PAYMENT CONFIRMED is a deposit, whatever case the customer has open; withdrawal wording only when the confirmation says withdrawal', async () => {
     build();
+    // The customer's open case was recorded as a withdrawal; the export bot confirms a PAYMENT: the note says deposit.
     await app.onMessage(t.inbound('7000000001', 'mera withdrawal bank me nahi aaya', [], NOW));
-    await confirm(confirmation('7000000001', { amount: '₹1,500' }));
+    await confirm(confirmation('7000000001', { amount: '₹3,844.94' }));
+    expect(t.sent.at(-1)!.text).toBe('🎉 Deposit Issue Resolved!\n\nHello P Kumar 👋\n\nAapka deposit issue successfully resolve ho gaya hai. Aapka amount ₹3,844.94 successfully credit/confirm ho gaya hai. 💰✅\n\nAapke patience ke liye thank you, Sir. 🙏\nSorry for the inconvenience. 💙');
+    expect(t.sent.at(-1)!.text).not.toMatch(/withdrawal/i);
+    // A confirmation that itself speaks of a withdrawal gets the withdrawal wording.
+    await app.onMessage(t.inbound('7000000011', 'withdrawal nahi aaya', [], NOW));
+    await confirm('✅ WITHDRAWAL PAYMENT CONFIRMED\n👤 Customer: P Kumar (User ID: 7000000011)\n💰 Amount: ₹1,500', 3);
     expect(t.sent.at(-1)!.text).toBe('🎉 Withdrawal Issue Resolved!\n\nHello P Kumar 👋\n\nAapka withdrawal issue successfully resolve ho gaya hai. Aapka amount ₹1,500 successfully transfer/confirm ho gaya hai. 💰✅\n\nAapke patience ke liye thank you, Sir. 🙏\nSorry for the inconvenience. 💙');
+    expect(parseConfirmation('✅ PAYMENT CONFIRMED\nUser ID: 6135570708\n🤖 @withdraw_pay_bot')?.issue).toBe('deposit'); // a bot handle is not the topic
     await app.onMessage(t.inbound('7000000002', 'मैंने पैसे डाले लेकिन वॉलेट में नहीं आए', [], NOW));
     await confirm(confirmation('7000000002', { amount: '₹300' }), 2);
     expect(t.sent.at(-1)!.text).toBe(solvedText('hindi', { name: 'P Kumar', amount: '₹300', issue: 'deposit' }));
@@ -234,7 +241,7 @@ describe('the Customer line in every shape the export bot prints', () => {
   });
 
   it('the pasted confirmation: no User ID, @Sureshreddy45, Suresh, 6363446223, ₹1,499.06 — and the bot\'s own @handle further down is not the customer', () => {
-    expect(parseConfirmation(betix())).toEqual({ userId: undefined, orderId: 'ILLUN-17907641975708', customerName: 'Suresh', customerUsername: 'Sureshreddy45', amount: '₹1,499.06', mobile: '6363446223' });
+    expect(parseConfirmation(betix())).toEqual({ userId: undefined, orderId: 'ILLUN-17907641975708', customerName: 'Suresh', customerUsername: 'Sureshreddy45', amount: '₹1,499.06', mobile: '6363446223', issue: 'deposit' });
   });
 
   it('the same @username is the same account, whatever the names look like', () => {
