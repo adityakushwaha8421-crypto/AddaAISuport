@@ -49,30 +49,29 @@ export interface SolvedDetails {
   name?: string;
   /** The confirmed amount as the export bot printed it, e.g. "₹2,999.01". */
   amount?: string;
-  issue: IssueType;
 }
 
-/** After the export bot's PAYMENT CONFIRMED: the solved note, with the customer's name and the confirmed amount. */
+/**
+ * After the export bot's PAYMENT CONFIRMED: the solved note, with the customer's name and the
+ * confirmed amount. A confirmed payment is money the customer paid in — always a deposit note.
+ */
 export function solvedText(lang: Language, d: SolvedDetails): string {
   const name = d.name?.trim() || pick(lang, 'Sir', 'Sir', 'सर');
-  const issue = d.issue === 'withdrawal' ? pick(lang, 'withdrawal', 'withdrawal', 'विड्रॉल') : pick(lang, 'deposit', 'deposit', 'डिपॉज़िट');
-  const settled = d.issue === 'withdrawal' ? pick(lang, 'transfer/confirm', 'transferred/confirmed', 'ट्रांसफर/कन्फर्म') : pick(lang, 'credit/confirm', 'credited/confirmed', 'क्रेडिट/कन्फर्म');
-  const title = d.issue === 'withdrawal' ? pick(lang, 'Withdrawal Issue Resolved!', 'Withdrawal Issue Resolved!', 'विड्रॉल इश्यू सॉल्व हो गया!') : pick(lang, 'Deposit Issue Resolved!', 'Deposit Issue Resolved!', 'डिपॉज़िट इश्यू सॉल्व हो गया!');
   const body = d.amount
     ? pick(
         lang,
-        `Aapka ${issue} issue successfully resolve ho gaya hai. Aapka amount ${d.amount} successfully ${settled} ho gaya hai. 💰✅`,
-        `Your ${issue} issue has been successfully resolved. Your amount of ${d.amount} has been ${settled} successfully. 💰✅`,
-        `आपका ${issue} इश्यू सफलतापूर्वक सॉल्व हो गया है। आपका अमाउंट ${d.amount} सफलतापूर्वक ${settled} हो गया है। 💰✅`,
+        `Aapka deposit issue successfully resolve ho gaya hai. Aapka amount ${d.amount} successfully credit/confirm ho gaya hai. 💰✅`,
+        `Your deposit issue has been successfully resolved. Your amount of ${d.amount} has been credited/confirmed successfully. 💰✅`,
+        `आपका डिपॉज़िट इश्यू सफलतापूर्वक सॉल्व हो गया है। आपका अमाउंट ${d.amount} सफलतापूर्वक क्रेडिट/कन्फर्म हो गया है। 💰✅`,
       )
     : pick(
         lang,
-        `Aapka ${issue} issue successfully resolve ho gaya hai aur payment confirm ho gaya hai. 💰✅`,
-        `Your ${issue} issue has been successfully resolved and the payment has been confirmed. 💰✅`,
-        `आपका ${issue} इश्यू सफलतापूर्वक सॉल्व हो गया है और पेमेंट कन्फर्म हो गया है। 💰✅`,
+        'Aapka deposit issue successfully resolve ho gaya hai aur payment confirm ho gaya hai. 💰✅',
+        'Your deposit issue has been successfully resolved and the payment has been confirmed. 💰✅',
+        'आपका डिपॉज़िट इश्यू सफलतापूर्वक सॉल्व हो गया है और पेमेंट कन्फर्म हो गया है। 💰✅',
       );
   return [
-    `🎉 ${title}`,
+    `🎉 ${pick(lang, 'Deposit Issue Resolved!', 'Deposit Issue Resolved!', 'डिपॉज़िट इश्यू सॉल्व हो गया!')}`,
     '',
     pick(lang, `Hello ${name} 👋`, `Hello ${name} 👋`, `नमस्ते ${name} 👋`),
     '',

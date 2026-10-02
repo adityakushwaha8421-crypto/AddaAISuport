@@ -32,8 +32,8 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    > Thank you for your patience, Sir. 🙏
    > Sorry for the inconvenience. 💙
 
-   A confirmed payment is always a **deposit** note, whatever case the customer has open (withdrawal
-   wording only when the confirmation itself says withdrawal/payout); Hinglish and Hindi customers get the same note
+   A confirmed payment is always a **deposit** note, whatever case the customer has open — there is
+   no withdrawal wording; Hinglish and Hindi customers get the same note
    in their language. Before sending, the customer the confirmation names (name, `@username`) is
    checked against the Telegram user behind that User ID: a mismatch, or a User ID Telegram does
    not know to this account, sends nothing and is logged. Without an amount line the note says the

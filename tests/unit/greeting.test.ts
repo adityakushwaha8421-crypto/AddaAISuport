@@ -89,7 +89,7 @@ describe('a greeting inside a case or an ongoing conversation is silent', () => 
     const u = '6135570733';
     await say(u, 'deposit nahi hua');
     await app.onExportMessage({ messageId: 1, text: `✅ PAYMENT CONFIRMED\n👤 Customer: P Kumar (User ID: ${u})\n💰 Amount: ₹500` });
-    expect(repliesTo(u)).toEqual([requestText('deposit', 'hinglish'), solvedText('hinglish', { name: 'P Kumar', amount: '₹500', issue: 'deposit' })]);
+    expect(repliesTo(u)).toEqual([requestText('deposit', 'hinglish'), solvedText('hinglish', { name: 'P Kumar', amount: '₹500' })]);
     advance(60);
     expect(await say(u, 'hi')).toBe('greeting_skipped');
     expect(repliesTo(u)).toHaveLength(2);

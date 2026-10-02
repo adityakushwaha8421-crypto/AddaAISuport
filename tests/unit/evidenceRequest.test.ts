@@ -160,7 +160,7 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
     await say('6135570708', 'I deposited money but my wallet does not show it');
     await say('6135570709', 'deposit nahi hua');
     await app.onExportMessage({ messageId: 1, text: confirmation('6135570708', '\n\n🧾 Order: ILLUN-178923603882201') });
-    expect(repliesTo('6135570708')).toEqual([requestText('deposit', 'english'), solvedText('english', { name: 'P Kumar', amount: '₹500', issue: 'deposit' })]);
+    expect(repliesTo('6135570708')).toEqual([requestText('deposit', 'english'), solvedText('english', { name: 'P Kumar', amount: '₹500' })]);
     expect(repliesTo('6135570709')).toHaveLength(1); // only their own request
     expect(await store.requests.listOpen('6135570708')).toHaveLength(0);
     // Re-sent, re-worded, same order → nothing more.
@@ -175,7 +175,7 @@ describe('PAYMENT CONFIRMED → one solved note', () => {
     t.profiles.set('7777777001', { id: '7777777001', firstName: 'Pankaj', lastName: 'Kumar' }); // Telegram knows them even though nothing is stored
     const text = confirmation('7777777001');
     expect(await app.confirmations.onExportMessage({ messageId: 10, text })).toBe('solved');
-    expect(t.sent).toEqual([{ chatId: '7777777001', text: solvedText('hinglish', { name: 'Pankaj Kumar', amount: '₹500', issue: 'deposit' }), kind: 'payment_confirmed', replyTo: undefined }]);
+    expect(t.sent).toEqual([{ chatId: '7777777001', text: solvedText('hinglish', { name: 'Pankaj Kumar', amount: '₹500' }), kind: 'payment_confirmed', replyTo: undefined }]);
     expect(await app.confirmations.onExportMessage({ messageId: 11, text })).toBe('duplicate');
     expect(await app.confirmations.onExportMessage({ messageId: 12, text: text.replace('₹500', '₹350') })).toBe('solved'); // a different payment
     expect(t.sent).toHaveLength(2);

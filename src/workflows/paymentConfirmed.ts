@@ -19,11 +19,6 @@ export interface Confirmation {
   amount?: string;
   /** The customer's mobile number as printed: the fallback address when there is no User ID. */
   mobile?: string;
-  /**
-   * What was confirmed. PAYMENT CONFIRMED is a payment the customer made INTO the app: a deposit.
-   * A withdrawal only when the confirmation itself says so ("WITHDRAWAL CONFIRMED", "Type: Payout").
-   */
-  issue: 'deposit' | 'withdrawal';
 }
 
 /** A valid confirmation names PAYMENT CONFIRMED; the customer is taken only from an explicit User ID line. */
@@ -37,9 +32,7 @@ export function parseConfirmation(text: string): Confirmation | undefined {
   const amount = amountRaw ? `₹${amountRaw}` : undefined;
   const mobileLine = text.split('\n').find((l) => /(?:Mobile|Phone|Contact|Number)\s*[:=]/i.test(l));
   const mobile = mobileLine ? extractMobileNumbers(mobileLine)[0] : undefined;
-  // The bot's own words decide the wording — never the case the customer happens to have open.
-  const issue = /\b(?:withdraw\w*|payout\w*|cash\s*out)\b/i.test(text.replace(/@\w+/g, ' ')) ? 'withdrawal' : 'deposit';
-  return { userId, orderId, customerName, customerUsername, amount, mobile, issue };
+  return { userId, orderId, customerName, customerUsername, amount, mobile };
 }
 
 /**
@@ -96,8 +89,8 @@ export type ConfirmationOutcome = 'solved' | 'duplicate' | 'ignored' | 'bot_off'
 /**
  * The export bot says "✅ PAYMENT CONFIRMED … User ID: <id>": exactly that customer is told, once
  * per payment, in their language, that the issue is solved — by their Telegram name, with the
- * confirmed amount, as a DEPOSIT (a confirmed payment is money the customer paid in) unless the
- * confirmation itself speaks of a withdrawal. Before sending, the customer named in the confirmation is checked against the
+ * confirmed amount, always as a DEPOSIT: a confirmed payment is money the customer paid in,
+ * whatever case they have open. Before sending, the customer named in the confirmation is checked against the
  * Telegram user behind the User ID. Without a User ID, the @username is resolved on Telegram (taken
  * when that account is a known customer or the confirmation's name matches it); failing that, the
  * Mobile line: the one customer who typed that exact number in their chat, and only if the
@@ -163,16 +156,16 @@ export class PaymentConfirmedWorkflow {
     const lang: Language = user?.preferredLanguage ?? 'hinglish';
     const chatId = user?.chatId ?? userId; // a private chat's id is the user's id
     const now = this.o.clock?.() ?? new Date();
-    const issue = parsed.issue;
     const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || parsed.customerName;
     // Claim the key before sending so two deliveries of the same confirmation cannot both send.
     await store.settings.set(key, { at: now.toISOString(), messageId: msg.messageId });
-    const note = solvedText(lang, { name, amount: parsed.amount, issue });
+    // A confirmed payment is money the customer paid in: always the deposit note, whatever case they have open.
+    const note = solvedText(lang, { name, amount: parsed.amount });
     try {
       const sent = await this.o.transport.sendText(chatId, escapeHtml(note), { html: true, kind: 'payment_confirmed' });
       await store.messages.insert({ chatId, userId, telegramMessageId: sent.messageId, direction: 'out', text: note, media: [], meta: { kind: 'payment_confirmed' }, createdAt: now });
       const closed = await store.requests.markSolved(userId, now);
-      log.info({ userId, via: target.via, language: lang, issue, amount: parsed.amount, requestsClosed: closed }, 'payment confirmed: customer told once');
+      log.info({ userId, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, 'payment confirmed: customer told once');
       return 'solved';
     } catch (err) {
       await store.settings.set(key, null).catch(() => undefined); // released: a later delivery may try again
