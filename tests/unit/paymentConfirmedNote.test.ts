@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { assemble, type App } from '../../src/app.js';
 import { silentLogger } from '../../src/observability/logger.js';
-import { solvedText } from '../../src/response/requests.js';
+import { refundedText, solvedText } from '../../src/response/requests.js';
 import { MemoryStore } from '../../src/storage/memory.js';
 import { extractMobileNumbers } from '../../src/nlu/mobile.js';
-import { identityMatches, parseConfirmation, parseCustomer } from '../../src/workflows/paymentConfirmed.js';
+import { identityMatches, parseConfirmation, parseCustomer, parseReference } from '../../src/workflows/paymentConfirmed.js';
 import { ADMIN, EXPORT_BOT, FakeTransport, NOW, SUPPORT, customerSends } from '../helpers/fakeTransport.js';
 
 /**
@@ -34,7 +34,7 @@ const confirm = (text: string, id = 1) => app.confirmations.onExportMessage({ me
 describe('reading the confirmation', () => {
   it('takes the User ID, the customer name and username, the amount and the order reference', () => {
     expect(parseConfirmation(confirmation('6135570708', { username: 'pkumar_9', order: 'ILLUN-178923603882201' }))).toEqual({
-      userId: '6135570708', orderId: 'ILLUN-178923603882201', customerName: 'P Kumar', customerUsername: 'pkumar_9', amount: '₹2,999.01', mobile: '9810822372',
+      event: 'payment_confirmed', userId: '6135570708', orderId: 'ILLUN-178923603882201', customerName: 'P Kumar', customerUsername: 'pkumar_9', amount: '₹2,999.01', mobile: '9810822372',
     });
     expect(parseConfirmation(confirmation('6135570708'))).toMatchObject({ customerName: 'P Kumar', customerUsername: undefined, amount: '₹2,999.01' });
     expect(parseConfirmation('PAYMENT CONFIRMED\nUser ID: 6135570708\nAmount: Rs. 500')).toMatchObject({ amount: '₹500', customerName: undefined });
@@ -243,7 +243,7 @@ describe('the Customer line in every shape the export bot prints', () => {
   });
 
   it('the pasted confirmation: no User ID, @Sureshreddy45, Suresh, 6363446223, ₹1,499.06 — and the bot\'s own @handle further down is not the customer', () => {
-    expect(parseConfirmation(betix())).toEqual({ userId: undefined, orderId: 'ILLUN-17907641975708', customerName: 'Suresh', customerUsername: 'Sureshreddy45', amount: '₹1,499.06', mobile: '6363446223' });
+    expect(parseConfirmation(betix())).toEqual({ event: 'payment_confirmed', userId: undefined, orderId: 'ILLUN-17907641975708', customerName: 'Suresh', customerUsername: 'Sureshreddy45', amount: '₹1,499.06', mobile: '6363446223' });
   });
 
   it('the same @username is the same account, whatever the names look like', () => {
@@ -292,5 +292,80 @@ describe('a confirmation without a User ID but with an @username', () => {
     await app.onMessage(t.inbound('7000000306', 'deposit nahi hua', [], NOW)); // P Kumar
     expect(await confirm('✅ PAYMENT CONFIRMED\n👤 Customer: P Kumar (User ID: 7000000306)\n💰 Amount: ₹500')).toBe('solved');
     expect(t.sent.at(-1)!.chatId).toBe('7000000306');
+  });
+});
+
+// ── 🔄 WITHDRAWAL REVERSED: the withdrawal case is solved, refunded to the wallet ──
+
+const reversed = (o: { userId?: string; name?: string; amount?: string; caseId?: string } = {}) =>
+  `🔄 WITHDRAWAL REVERSED\n\n🗂 Case: ${o.caseId ?? 'BXWD-19359-70864'}\n👤 Customer: ${o.name ?? 'Niti Patel Nitin'}\n🆔 User ID: ${o.userId ?? '6138074394'}\n💰 Amount: ${o.amount ?? '₹4,850.00'}\n📣 Reported by: @betixpay_cs_bot\n\n✅ Solved — Betix reversed this withdrawal.\n💸 Please pay the customer manually.\n\nOrderStatus: Reversed`;
+
+describe('reading the export bot\'s results', () => {
+  it('WITHDRAWAL REVERSED: the case number, the customer, the User ID, the amount — the bot\'s own @handle is not the customer', () => {
+    expect(parseConfirmation(reversed())).toEqual({ event: 'withdrawal_reversed', userId: '6138074394', orderId: 'BXWD-19359-70864', customerName: 'Niti Patel Nitin', customerUsername: undefined, amount: '₹4,850.00', mobile: undefined });
+  });
+
+  it('the reference is a case / order number, never a word that follows "Order"', () => {
+    expect(parseReference('💵OrderAmount: 14550\n📄OrderStatus: Completed\n🧾UTR: 299628437497\n📌PlatOrderNo: PO2610013c276tvh2gf(72)\n📌MerchantOrderNo: BXWD-49437-70854')).toBe('BXWD-49437-70854');
+    expect(parseReference('OrderStatus: Reversed\nOrderAmount: 14550')).toBeUndefined();
+    expect(parseReference('🧾 Order: ILLUN-179030843478237')).toBe('ILLUN-179030843478237');
+    expect(parseReference('🗂 Case: BXWD-19359-70864\nOrderStatus: Reversed')).toBe('BXWD-19359-70864');
+    expect(parseReference('🧾UTR: 299628437497')).toBe('299628437497');
+  });
+
+  it('a payout record that is neither PAYMENT CONFIRMED nor WITHDRAWAL REVERSED is not a result', () => {
+    expect(parseConfirmation('MerchantId B3126--INR\n💵OrderAmount: 14550\n📄OrderStatus: Completed | 🔁CallbackStatus: Success\n📌MerchantOrderNo: BXWD-49437-70854\nBeneficiary Name: RANIK')).toBeUndefined();
+  });
+});
+
+describe('WITHDRAWAL REVERSED → the withdrawal solved note', () => {
+  it('the pasted case: Niti Patel Nitin is told once that the withdrawal issue is solved and ₹4,850.00 is refunded to the wallet', async () => {
+    build();
+    t.profiles.set('6138074394', { id: '6138074394', firstName: 'Niti Patel', lastName: 'Nitin' });
+    await app.onMessage(t.inbound('6138074394', 'mera withdrawal bank me nahi aaya', [], NOW));
+    expect(await confirm(reversed())).toBe('solved');
+    const note = t.sent.at(-1)!;
+    expect(note).toMatchObject({ chatId: '6138074394', kind: 'withdrawal_reversed' });
+    expect(note.text).toBe(refundedText('hinglish', { name: 'Niti Patel Nitin', amount: '₹4,850.00' }));
+    expect(note.text).toBe('🎉 Withdrawal Issue Resolved!\n\nHello Niti Patel Nitin 👋\n\nAapka withdrawal issue successfully resolve ho gaya hai. Aapka amount ₹4,850.00 successfully aapke wallet me refund ho gaya hai. 💰✅\n\nAapke patience ke liye thank you, Sir. 🙏\nSorry for the inconvenience. 💙');
+    expect(await store.requests.listOpen('6138074394')).toHaveLength(0); // the case is closed
+    // The same case reported again: nothing more. A different case of the same customer: its own note.
+    expect(await confirm(reversed(), 2)).toBe('duplicate');
+    expect(await confirm(reversed({ caseId: 'BXWD-19359-70999', amount: '₹1,200.00' }), 3)).toBe('solved');
+    expect(customerSends(t).filter((s) => s.kind === 'withdrawal_reversed')).toHaveLength(2);
+  });
+
+  it('English and Hindi customers get it in their language', async () => {
+    build();
+    t.profiles.set('7000000501', { id: '7000000501', firstName: 'Niti' });
+    await app.onMessage(t.inbound('7000000501', 'I withdrew my money but it has not reached my bank account', [], NOW));
+    await confirm(reversed({ userId: '7000000501', name: 'Niti' }));
+    expect(t.sent.at(-1)!.text).toBe('🎉 Withdrawal Issue Resolved!\n\nHello Niti 👋\n\nYour withdrawal issue has been successfully resolved. Your amount of ₹4,850.00 has been refunded to your wallet successfully. 💰✅\n\nThank you for your patience, Sir. 🙏\nSorry for the inconvenience. 💙');
+    t.profiles.set('7000000502', { id: '7000000502', firstName: 'Niti' });
+    await app.onMessage(t.inbound('7000000502', 'मेरा विड्रॉल बैंक में नहीं आया', [], NOW));
+    await confirm(reversed({ userId: '7000000502', name: 'Niti' }), 2);
+    expect(t.sent.at(-1)!.text).toBe(refundedText('hindi', { name: 'Niti', amount: '₹4,850.00' }));
+  });
+
+  it('a PAYMENT CONFIRMED stays a deposit note; the two results never share a "told once" key', async () => {
+    build();
+    await app.onMessage(t.inbound('7000000503', 'deposit nahi hua', [], NOW));
+    expect(await confirm('✅ PAYMENT CONFIRMED\n👤 Customer: P Kumar (User ID: 7000000503)\n💰 Amount: ₹500\n🧾 Order: BXWD-1-1')).toBe('solved');
+    expect(t.sent.at(-1)!.text).toMatch(/^🎉 Deposit Issue Resolved!/);
+    expect(await confirm(reversed({ userId: '7000000503', name: 'P Kumar', caseId: 'BXWD-1-1' }), 2)).toBe('solved');
+    expect(t.sent.at(-1)!.text).toMatch(/^🎉 Withdrawal Issue Resolved!/);
+  });
+
+  it('the same safeguards: the customer must match the User ID, the bot must be ON, a User ID Telegram does not know gets nothing', async () => {
+    build();
+    t.profiles.set('6138074394', { id: '6138074394', firstName: 'Somebody', lastName: 'Else' });
+    expect(await confirm(reversed())).toBe('user_mismatch');
+    expect(await confirm(reversed({ userId: '6138079999' }), 2)).toBe('user_unverified');
+    t.profiles.set('6138074394', { id: '6138074394', firstName: 'Niti' });
+    await app.botSwitch.set(false);
+    expect(await confirm(reversed(), 3)).toBe('bot_off');
+    expect(customerSends(t)).toHaveLength(0);
+    await app.botSwitch.set(true);
+    expect(await confirm(reversed(), 4)).toBe('solved'); // not lost: told once ON
   });
 });

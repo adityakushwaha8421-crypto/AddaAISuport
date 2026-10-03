@@ -36,7 +36,8 @@ workflows/evidenceRequest.ts (per customer message, in this order; any other out
   nlu/issueType.ts: moneyDirection scorer, else the model once (deposit | withdrawal | other | unclear) →
   not read by a human? → bot_enabled once more → requests.create('sending') → guarded sendText(kind
   'evidence_request') → markSent + outbound message row. A failed send removes the row.
-workflows/paymentConfirmed.ts: PAYMENT CONFIRMED → bot_enabled → the customer: by User ID (the Telegram
+workflows/paymentConfirmed.ts: PAYMENT CONFIRMED (deposit note) or WITHDRAWAL REVERSED (withdrawal note: solved,
+  refunded to the wallet; kind 'withdrawal_reversed') → bot_enabled → the customer: by User ID (the Telegram
   profile behind it — raw transport userProfile, else the stored customer — must not contradict the
   name/@username the confirmation gives), else by the @username (transport userByUsername; a known customer, or the name matches), else by the Mobile line (users.findByMobileNumber over the
   numbers customers typed, nlu/mobile.ts; exactly one candidate whose Telegram name/@username
@@ -59,7 +60,7 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bot / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
 | `control/botSwitch.ts` | `bot_enabled` in the store's `settings` + `BOT_STATE_FILE` mirror; `isOnNow()` reads fresh; `restore()` at boot |
 | `control/adminCommands.ts` | `/boton` `/botoff` `/restart` for `ADMIN_TELEGRAM_IDS` and the owner in Saved Messages |
-| `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `payment_confirmed`, `greeting`} |
+| `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `payment_confirmed`, `withdrawal_reversed`, `greeting`} |
 | `nlu/moneyDirection.ts`, `nlu/normalize.ts`, `nlu/issueType.ts` | direction-of-money scorer (Hinglish/Hindi/English cues), text normalisation + language detection, scorer-then-model classification |
 | `workflows/evidenceRequest.ts`, `workflows/paymentConfirmed.ts` | the two customer-facing workflows |
 | `workflows/chatFiling.ts`, `workflows/humanReplyFolders.ts`, `telegram/user/folders.ts` | a classified message files the chat into the team's folders; a human's reply takes it out (pure dialog-filter helpers; folder edits one at a time; failures logged) |

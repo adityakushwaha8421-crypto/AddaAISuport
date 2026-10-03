@@ -46,6 +46,21 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    Nobody typed it, several customers match, or the name cannot be confirmed → nobody is messaged,
    and the log says why. A User ID always wins over the Mobile line.
 
+   **Withdrawal reversed.** When the export bot sends `🔄 WITHDRAWAL REVERSED` (case number,
+   customer, `User ID`, amount), exactly that customer is told once per case, in their language:
+
+   > 🎉 Withdrawal Issue Resolved!
+   >
+   > Hello Niti Patel Nitin 👋
+   >
+   > Your withdrawal issue has been successfully resolved. Your amount of ₹4,850.00 has been refunded to your wallet successfully. 💰✅
+   >
+   > Thank you for your patience, Sir. 🙏
+   > Sorry for the inconvenience. 💙
+
+   Same safeguards as the payment note (identity check, bot ON, told once by case number), and the
+   customer's open case is closed. A payout record that is neither `PAYMENT CONFIRMED` nor
+   `WITHDRAWAL REVERSED` (for example `OrderStatus: Completed` with beneficiary details) sends nothing.
 3. **One greeting per fresh conversation.** A message that is only a greeting ("Hi", "Hello",
    "Hlo", "Namaste", "Good morning sir"…) is answered with one greeting, in the customer's language,
    **only** when it opens a conversation: no open deposit/withdrawal case in the chat, nothing else
@@ -112,8 +127,8 @@ Telegram keeps no empty folder.
 ## Two safety nets
 
 1. **Customer messaging allowlist (code).** `src/control/customerMessaging.ts` keeps
-   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly three message kinds through:
-   `evidence_request`, `payment_confirmed` and `greeting`. Every automatic code path sends through the guarded
+   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly four message kinds through:
+   `evidence_request`, `payment_confirmed`, `withdrawal_reversed` and `greeting`. Every automatic code path sends through the guarded
    transport (`app.transport`), which refuses any other send or forward to a chat that is not the
    support group or the export bot. Nothing added later can message a customer until it is listed there.
 2. **Kill switch (runtime).** `/botoff` sets `bot_enabled = false` in the store (shared by every

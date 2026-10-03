@@ -81,3 +81,34 @@ export function solvedText(lang: Language, d: SolvedDetails): string {
     pick(lang, 'Sorry for the inconvenience. 💙', 'Sorry for the inconvenience. 💙', 'असुविधा के लिए माफ़ी। 💙'),
   ].join('\n');
 }
+
+/**
+ * After the export bot's WITHDRAWAL REVERSED: the withdrawal case is solved and the amount is back
+ * in the customer's wallet.
+ */
+export function refundedText(lang: Language, d: SolvedDetails): string {
+  const name = d.name?.trim() || pick(lang, 'Sir', 'Sir', 'सर');
+  const body = d.amount
+    ? pick(
+        lang,
+        `Aapka withdrawal issue successfully resolve ho gaya hai. Aapka amount ${d.amount} successfully aapke wallet me refund ho gaya hai. 💰✅`,
+        `Your withdrawal issue has been successfully resolved. Your amount of ${d.amount} has been refunded to your wallet successfully. 💰✅`,
+        `आपका विड्रॉल इश्यू सफलतापूर्वक सॉल्व हो गया है। आपका अमाउंट ${d.amount} सफलतापूर्वक आपके वॉलेट में रिफंड हो गया है। 💰✅`,
+      )
+    : pick(
+        lang,
+        'Aapka withdrawal issue successfully resolve ho gaya hai aur amount aapke wallet me refund ho gaya hai. 💰✅',
+        'Your withdrawal issue has been successfully resolved and the amount has been refunded to your wallet. 💰✅',
+        'आपका विड्रॉल इश्यू सफलतापूर्वक सॉल्व हो गया है और अमाउंट आपके वॉलेट में रिफंड हो गया है। 💰✅',
+      );
+  return [
+    `🎉 ${pick(lang, 'Withdrawal Issue Resolved!', 'Withdrawal Issue Resolved!', 'विड्रॉल इश्यू सॉल्व हो गया!')}`,
+    '',
+    pick(lang, `Hello ${name} 👋`, `Hello ${name} 👋`, `नमस्ते ${name} 👋`),
+    '',
+    body,
+    '',
+    pick(lang, 'Aapke patience ke liye thank you, Sir. 🙏', 'Thank you for your patience, Sir. 🙏', 'आपके धैर्य के लिए धन्यवाद, सर। 🙏'),
+    pick(lang, 'Sorry for the inconvenience. 💙', 'Sorry for the inconvenience. 💙', 'असुविधा के लिए माफ़ी। 💙'),
+  ].join('\n');
+}

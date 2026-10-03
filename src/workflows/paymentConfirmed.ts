@@ -2,13 +2,17 @@ import { createHash } from 'node:crypto';
 import type { Logger } from 'pino';
 import { BotOffError } from '../control/guardedTransport.js';
 import { escapeHtml } from '../response/html.js';
-import { solvedText, type Language } from '../response/requests.js';
+import { refundedText, solvedText, type Language } from '../response/requests.js';
 import { extractMobileNumbers, maskMobile } from '../nlu/mobile.js';
 import { scrubber } from '../security/scrubber.js';
 import type { Store, UserRecord } from '../storage/types.js';
 import type { TelegramUserProfile, Transport } from '../telegram/transport.js';
 
+/** What the export bot reports: a payment the customer made was confirmed (deposit solved), or a stuck withdrawal was reversed (refunded to the wallet). */
+export type ConfirmationEvent = 'payment_confirmed' | 'withdrawal_reversed';
+
 export interface Confirmation {
+  event: ConfirmationEvent;
   userId?: string;
   /** The payment's order/transaction reference, when the bot prints one: the same payment confirmed twice is told once. */
   orderId?: string;
@@ -21,18 +25,38 @@ export interface Confirmation {
   mobile?: string;
 }
 
-/** A valid confirmation names PAYMENT CONFIRMED; the customer is taken only from an explicit User ID line. */
+/**
+ * The payment's reference, for "told once": the case / order number the bot prints. The label must
+ * be followed by a separator and the value must hold a digit — "OrderAmount: 14550" and
+ * "OrderStatus: Reversed" are not references.
+ */
+const REFERENCE_LABELS = [
+  /Case\s*(?:ID|No\.?)?/, /MerchantOrderNo/, /(?<![A-Za-z])Order\s*(?:ID|No\.?|Number)?/, /PlatOrderNo/, /(?:UTR|Txn|Transaction|Ref(?:erence)?)\s*(?:ID|No\.?|Number)?/,
+];
+export function parseReference(text: string): string | undefined {
+  for (const label of REFERENCE_LABELS) {
+    const value = new RegExp(`${label.source}\\s*[:=]\\s*([A-Z0-9][A-Z0-9-]{5,})`, 'i').exec(text)?.[1];
+    if (value && /\d/.test(value)) return value;
+  }
+  return undefined;
+}
+
+/**
+ * A valid result names PAYMENT CONFIRMED (a deposit) or WITHDRAWAL REVERSED (a withdrawal refunded
+ * to the wallet); the customer is taken from an explicit User ID line when there is one.
+ */
 export function parseConfirmation(text: string): Confirmation | undefined {
-  if (!/PAYMENT\s+CONFIRMED/i.test(text)) return undefined;
+  const event: ConfirmationEvent | undefined = /WITHDRAW\w*\s+REVERSED/i.test(text) ? 'withdrawal_reversed' : /PAYMENT\s+CONFIRMED/i.test(text) ? 'payment_confirmed' : undefined;
+  if (!event) return undefined;
   const userId = /User\s*ID\s*[:=]?\s*(\d{5,20})\b/i.exec(text)?.[1];
-  const orderId = /(?:Order|Txn|Transaction|UTR|Ref(?:erence)?)\s*(?:ID|No\.?|Number)?\s*[:=]?\s*([A-Z0-9][A-Z0-9-]{5,})\b/i.exec(text)?.[1];
+  const orderId = parseReference(text);
   const customerLine = text.split('\n').find((l) => /Customer\s*[:=]/i.test(l));
   const { customerName, customerUsername } = parseCustomer(customerLine);
   const amountRaw = /Amount\s*[:=]?\s*(?:₹|Rs\.?|INR)?\s*(\d[\d,]*(?:\.\d{1,2})?)\b/i.exec(text)?.[1];
   const amount = amountRaw ? `₹${amountRaw}` : undefined;
   const mobileLine = text.split('\n').find((l) => /(?:Mobile|Phone|Contact|Number)\s*[:=]/i.test(l));
   const mobile = mobileLine ? extractMobileNumbers(mobileLine)[0] : undefined;
-  return { userId, orderId, customerName, customerUsername, amount, mobile };
+  return { event, userId, orderId, customerName, customerUsername, amount, mobile };
 }
 
 /**
@@ -87,6 +111,8 @@ const fingerprint = (text: string) => createHash('sha1').update(text.toLowerCase
 export type ConfirmationOutcome = 'solved' | 'duplicate' | 'ignored' | 'bot_off' | 'user_unverified' | 'user_mismatch' | 'send_failed';
 
 /**
+ * The export bot says "🔄 WITHDRAWAL REVERSED … User ID: <id>": exactly that customer is told, once
+ * per case, that the withdrawal issue is solved and the amount is refunded to their wallet. Or:
  * The export bot says "✅ PAYMENT CONFIRMED … User ID: <id>": exactly that customer is told, once
  * per payment, in their language, that the issue is solved — by their Telegram name, with the
  * confirmed amount, always as a DEPOSIT: a confirmed payment is money the customer paid in,
@@ -115,11 +141,11 @@ export class PaymentConfirmedWorkflow {
     const text = msg.text ?? '';
     const parsed = parseConfirmation(text);
     if (!parsed) {
-      log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED)');
+      log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED or a WITHDRAWAL REVERSED)');
       return 'ignored';
     }
     if (!parsed.userId && !parsed.customerUsername && !parsed.mobile) {
-      log.warn({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 300) }, 'PAYMENT CONFIRMED without a User ID, an @username or a Mobile line: nobody is messaged');
+      log.warn({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 300) }, 'export bot result without a User ID, an @username or a Mobile line: nobody is messaged');
       return 'ignored';
     }
     if (!(await this.o.botSwitch.isOnNow())) return 'bot_off';
@@ -148,9 +174,9 @@ export class PaymentConfirmedWorkflow {
     }
     const { userId, user, profile } = target;
 
-    const key = `payment_confirmed:${userId}:${parsed.orderId ? `order:${parsed.orderId.toUpperCase()}` : `text:${fingerprint(text)}`}`;
+    const key = `${parsed.event}:${userId}:${parsed.orderId ? `order:${parsed.orderId.toUpperCase()}` : `text:${fingerprint(text)}`}`;
     if (await store.settings.get(key)) {
-      log.info({ userId }, 'payment confirmed again for the same payment: customer already told');
+      log.info({ userId, event: parsed.event }, 'the same result again: customer already told');
       return 'duplicate';
     }
     const lang: Language = user?.preferredLanguage ?? 'hinglish';
@@ -159,13 +185,14 @@ export class PaymentConfirmedWorkflow {
     const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || parsed.customerName;
     // Claim the key before sending so two deliveries of the same confirmation cannot both send.
     await store.settings.set(key, { at: now.toISOString(), messageId: msg.messageId });
-    // A confirmed payment is money the customer paid in: always the deposit note, whatever case they have open.
-    const note = solvedText(lang, { name, amount: parsed.amount });
+    // The bot's result decides the note, never the case the customer has open: a confirmed payment
+    // is a deposit solved; a reversed withdrawal is a withdrawal solved, refunded to the wallet.
+    const note = parsed.event === 'withdrawal_reversed' ? refundedText(lang, { name, amount: parsed.amount }) : solvedText(lang, { name, amount: parsed.amount });
     try {
-      const sent = await this.o.transport.sendText(chatId, escapeHtml(note), { html: true, kind: 'payment_confirmed' });
-      await store.messages.insert({ chatId, userId, telegramMessageId: sent.messageId, direction: 'out', text: note, media: [], meta: { kind: 'payment_confirmed' }, createdAt: now });
+      const sent = await this.o.transport.sendText(chatId, escapeHtml(note), { html: true, kind: parsed.event });
+      await store.messages.insert({ chatId, userId, telegramMessageId: sent.messageId, direction: 'out', text: note, media: [], meta: { kind: parsed.event }, createdAt: now });
       const closed = await store.requests.markSolved(userId, now);
-      log.info({ userId, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, 'payment confirmed: customer told once');
+      log.info({ userId, event: parsed.event, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, 'export bot result: customer told once');
       return 'solved';
     } catch (err) {
       await store.settings.set(key, null).catch(() => undefined); // released: a later delivery may try again
