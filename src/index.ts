@@ -109,7 +109,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     onAdminCommand: (e) => app.onAdminCommand(e),
   });
   log.info(
-    { llm: llm.available, port: env.HTTP_PORT, botOn: await app.botSwitch.current(), admins: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').filter(Boolean).length, workflows: ['evidence_request', 'payment_confirmed', 'withdrawal_reversed', 'greeting'] },
+    { llm: llm.available, port: env.HTTP_PORT, botOn: await app.botSwitch.current(), admins: (env.ADMIN_TELEGRAM_IDS ?? '').split(',').filter(Boolean).length, workflows: ['evidence_request', 'withdrawal_pending', 'statement_request', 'payment_confirmed', 'withdrawal_reversed', 'greeting'] },
     'agent running: one evidence request per deposit/withdrawal case, one solved note per confirmed payment, one greeting per fresh chat, nothing else',
   );
   // Started by /restart: the previous process pulled and built the code and handed over to us. Tell the admin.

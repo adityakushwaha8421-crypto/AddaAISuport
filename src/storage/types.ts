@@ -39,6 +39,8 @@ export interface UserRepo {
 
 export type EvidenceRequestStatus = 'sending' | 'sent' | 'solved';
 
+export type RequestStage = 'awaiting_evidence' | 'pending_told' | 'statement_requested';
+
 export interface EvidenceRequest {
   id: string;
   chatId: string;
@@ -48,13 +50,20 @@ export interface EvidenceRequest {
   status: EvidenceRequestStatus;
   /** Telegram id of the request message, once sent. */
   telegramMessageId?: number;
+  /**
+   * Withdrawal cases move in steps: the Withdrawal ID / screenshot was asked for (`awaiting_evidence`),
+   * then either the customer was told it is still pending (`pending_told`) or, once it shows as
+   * successful, asked for the bank statement (`statement_requested`). Unset on deposit cases.
+   */
+  stage?: RequestStage;
   createdAt: Date;
   solvedAt?: Date;
 }
 
 export interface EvidenceRequestRepo {
-  create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }): Promise<EvidenceRequest>;
+  create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date; stage?: RequestStage }): Promise<EvidenceRequest>;
   markSent(id: string, telegramMessageId: number): Promise<void>;
+  setStage(id: string, stage: RequestStage): Promise<void>;
   /** The request never went out: forget it so the next message may ask again. */
   remove(id: string): Promise<void>;
   /** Requests in a chat that are not solved, newest first. */

@@ -3,7 +3,7 @@ import type { Logger } from 'pino';
 import { Semaphore } from '../util/rateLimiter.js';
 import type { Metrics } from '../observability/metrics.js';
 import { scrubber } from '../security/scrubber.js';
-import { LlmUnavailableError, type JsonSchema, type LlmClient, type LlmRequestBase } from './client.js';
+import { LlmUnavailableError, type ContentPart, type JsonSchema, type LlmClient, type LlmRequestBase } from './client.js';
 
 export interface OpenAiLlmOptions {
   apiKey: string;
@@ -18,6 +18,15 @@ export interface OpenAiLlmOptions {
 }
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
+function userContent(user: string | ContentPart[]): OpenAI.Chat.Completions.ChatCompletionUserMessageParam['content'] {
+  if (typeof user === 'string') return user;
+  return user.map((p) =>
+    p.type === 'text'
+      ? { type: 'text' as const, text: p.text }
+      : { type: 'image_url' as const, image_url: { url: `data:${p.mimeType};base64,${p.data.toString('base64')}`, detail: p.detail ?? 'high' } },
+  );
+}
 
 /** OpenAI Chat Completions with strict JSON-schema structured outputs. */
 export class OpenAiLlm implements LlmClient {
@@ -39,7 +48,7 @@ export class OpenAiLlm implements LlmClient {
     const model = this.opts.model;
     const messages: Msg[] = [
       { role: 'system', content: req.system },
-      { role: 'user', content: req.user },
+      { role: 'user', content: userContent(req.user) },
     ];
     const started = Date.now();
     try {

@@ -219,4 +219,8 @@ CREATE TABLE customer_mobiles (
 CREATE INDEX customer_mobiles_user_idx ON customer_mobiles (user_id);
 `,
   },
+  {
+    id: '008_evidence_requests_stage',
+    sql: `ALTER TABLE evidence_requests ADD COLUMN stage text;`,
+  },
 ];

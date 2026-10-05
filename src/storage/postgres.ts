@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 import { migrate, type Queryable } from './migrate.js';
-import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
+import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, RequestStage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
 
 /** A pool-like object: pg.Pool in production, pg-mem's adapter in tests. */
 export interface PoolLike extends Queryable {
@@ -51,6 +51,7 @@ const toRequest = (r: Row): EvidenceRequest => ({
   language: r.language,
   status: r.status,
   telegramMessageId: num(r.telegram_message_id),
+  stage: str(r.stage) as RequestStage | undefined,
   createdAt: new Date(r.created_at),
   solvedAt: date(r.solved_at),
 });
@@ -125,12 +126,15 @@ class PgUsers implements UserRepo {
 
 class PgRequests implements EvidenceRequestRepo {
   constructor(private db: Queryable) {}
-  async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }) {
+  async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date; stage?: RequestStage }) {
     const { rows } = await this.db.query(
-      `INSERT INTO evidence_requests (id, chat_id, user_id, issue_type, language, status, created_at) VALUES ($1,$2,$3,$4,$5,'sending',$6) RETURNING *`,
-      [randomUUID(), r.chatId, r.userId, r.issueType, r.language, r.createdAt ?? new Date()],
+      `INSERT INTO evidence_requests (id, chat_id, user_id, issue_type, language, status, created_at, stage) VALUES ($1,$2,$3,$4,$5,'sending',$6,$7) RETURNING *`,
+      [randomUUID(), r.chatId, r.userId, r.issueType, r.language, r.createdAt ?? new Date(), r.stage ?? null],
     );
     return toRequest(rows[0]);
+  }
+  async setStage(id: string, stage: RequestStage) {
+    await this.db.query(`UPDATE evidence_requests SET stage = $2 WHERE id = $1`, [id, stage]);
   }
   async markSent(id: string, telegramMessageId: number) {
     await this.db.query(`UPDATE evidence_requests SET status = 'sent', telegram_message_id = $2 WHERE id = $1`, [id, telegramMessageId]);

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
+import type { EvidenceRequest, EvidenceRequestRepo, MessageRepo, NewStoredMessage, RequestStage, SettingsRepo, Store, StoredMessage, UserRecord, UserRepo } from './types.js';
 
 /** Deep copy so callers can't mutate stored state without saving (mirrors DB semantics). */
 const clone = <T>(v: T): T => structuredClone(v);
@@ -103,7 +103,12 @@ class MemoryRequests implements EvidenceRequestRepo {
   private save() {
     if (this.file) saveJson(this.file, this.rows);
   }
-  async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date }) {
+  async setStage(id: string, stage: RequestStage) {
+    const r = this.rows.find((x) => x.id === id);
+    if (r) r.stage = stage;
+    this.save();
+  }
+  async create(r: Pick<EvidenceRequest, 'chatId' | 'userId' | 'issueType' | 'language'> & { createdAt?: Date; stage?: RequestStage }) {
     const { createdAt, ...rest } = r;
     const row: EvidenceRequest = { ...rest, id: randomUUID(), status: 'sending', createdAt: createdAt ?? new Date() };
     this.rows.push(row);

@@ -5,6 +5,7 @@ import { CUSTOMER_MESSAGING_ENABLED, ENABLED_CUSTOMER_MESSAGES } from './control
 import { guardTransport } from './control/guardedTransport.js';
 import { OtherCopyDetector } from './control/otherCopy.js';
 import { messageBody, type InboundMessage } from './domain/messages.js';
+import type { WithdrawalLookup } from './evidence/withdrawalScreenshot.js';
 import { extractMobileNumbers } from './nlu/mobile.js';
 import type { LlmClient } from './llm/client.js';
 import type { Metrics } from './observability/metrics.js';
@@ -47,6 +48,8 @@ export interface AppComponents {
   clock?: () => Date;
   /** Used only to tell deposit from withdrawal when the lexical scorer cannot. */
   llm?: LlmClient;
+  /** The team's panel for a withdrawal id sent without a screenshot. Unset today: such an id is left to the team. */
+  withdrawalLookup?: WithdrawalLookup;
   /** Telegram read state; when set, a message a human already read gets no request. */
   readState?: ReadStateApi;
   /** The ON/OFF switch (defaults to one over the store's settings). */
@@ -99,6 +102,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
   const requests = new EvidenceRequestWorkflow({
     store: c.store, transport, botSwitch, llm: c.llm, readState: c.readState, log: c.log.child({ mod: 'evidence-request' }), clock: c.clock,
     staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, takeoverHours: cfg.takeoverHours,
+    media: c.transport, lookup: c.withdrawalLookup,
     onClassified: async (ev) => void (await filing.file(ev.chatId, ev.category)),
   });
   const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, directory: c.transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
@@ -166,7 +170,11 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       c.metrics?.outbound.inc({ kind: outcome.startsWith('greet') ? 'greeting' : 'evidence_request', outcome });
       c.log.info(
         { chat: msg.chatId, message: msg.messageId, media: msg.media.length, outcome, at: now().toISOString() },
-        outcome === 'requested' ? 'customer message: evidence request sent' : outcome === 'greeted' ? 'customer message: greeting sent (fresh conversation)' : 'customer message stored, no reply',
+        outcome === 'requested' ? 'customer message: evidence request sent'
+          : outcome === 'greeted' ? 'customer message: greeting sent (fresh conversation)'
+          : outcome === 'pending_told' ? 'customer message: withdrawal shows pending, 12–24 hours note sent'
+          : outcome === 'statement_requested' ? 'customer message: withdrawal shows successful, bank statement requested'
+          : 'customer message stored, no reply',
       );
       return outcome;
     },

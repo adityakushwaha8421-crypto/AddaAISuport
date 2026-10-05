@@ -35,6 +35,16 @@ describe.each(allStoreFactories)('Store contract: $name', (factory) => {
     expect((await store.users.get('u1'))?.greetedAt).toEqual(at); // an upsert keeps it
   });
 
+  it('a withdrawal case carries its stage, and keeps it', async () => {
+    const w = await store.requests.create({ chatId: 'c1', userId: 'u1', issueType: 'withdrawal', language: 'hinglish', stage: 'awaiting_evidence' });
+    const d = await store.requests.create({ chatId: 'c2', userId: 'u2', issueType: 'deposit', language: 'english' });
+    expect([w.stage, d.stage]).toEqual(['awaiting_evidence', undefined]);
+    await store.requests.markSent(w.id, 5);
+    await store.requests.setStage(w.id, 'pending_told');
+    expect((await store.requests.listOpen('c1'))[0]).toMatchObject({ stage: 'pending_told', status: 'sent', telegramMessageId: 5 });
+    expect((await store.requests.listOpen('c2'))[0]?.stage).toBeUndefined();
+  });
+
   it('remembers the mobile numbers a customer typed and finds customers by number', async () => {
     await store.users.upsert({ id: 'u1', chatId: 'c1' });
     await store.users.upsert({ id: 'u2', chatId: 'c2' });

@@ -30,6 +30,10 @@ workflows/evidenceRequest.ts (per customer message, in this order; any other out
   bot_enabled fresh? → not stale? → no human takeover (one further ahead than HUMAN_TAKEOVER_HOURS is
   stale, dropped)? → first contact: no human message younger than HUMAN_TAKEOVER_HOURS in the chat's
   Telegram history (recentOutgoing minus what we sent; takeover runs from that message)? → has text? → detect language →
+  open WITHDRAWAL request still awaiting_evidence? → the message's photo is fetched (raw transport
+  downloadMedia) and read (evidence/withdrawalScreenshot.ts, image input) — or its id looked up, when a
+  WithdrawalLookup is wired — pending → 'withdrawal_pending' note, success → 'statement_request', else
+  silent; the stage is stored on the request (evidence_requests.stage) →
   open request in this chat (either type, younger than CASE_REOPEN_HOURS)? → silent, no model call →
   bare greeting (nlu/greeting.ts)? → answered once (kind 'greeting', users.greeted_at) only if nothing
   but greetings was said in the chat within the window and no greeting was answered in it; else silent →
@@ -60,7 +64,7 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bot / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
 | `control/botSwitch.ts` | `bot_enabled` in the store's `settings` + `BOT_STATE_FILE` mirror; `isOnNow()` reads fresh; `restore()` at boot |
 | `control/adminCommands.ts` | `/boton` `/botoff` `/restart` for `ADMIN_TELEGRAM_IDS` and the owner in Saved Messages |
-| `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `payment_confirmed`, `withdrawal_reversed`, `greeting`} |
+| `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `withdrawal_pending`, `statement_request`, `payment_confirmed`, `withdrawal_reversed`, `greeting`} |
 | `nlu/moneyDirection.ts`, `nlu/normalize.ts`, `nlu/issueType.ts` | direction-of-money scorer (Hinglish/Hindi/English cues), text normalisation + language detection, scorer-then-model classification |
 | `workflows/evidenceRequest.ts`, `workflows/paymentConfirmed.ts` | the two customer-facing workflows |
 | `workflows/chatFiling.ts`, `workflows/humanReplyFolders.ts`, `telegram/user/folders.ts` | a classified message files the chat into the team's folders; a human's reply takes it out (pure dialog-filter helpers; folder edits one at a time; failures logged) |

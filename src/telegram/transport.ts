@@ -1,4 +1,4 @@
-import type { InboundMessage } from '../domain/messages.js';
+import type { InboundMessage, MediaRef } from '../domain/messages.js';
 
 export interface SendOptions {
   replyToMessageId?: number;
@@ -48,6 +48,8 @@ export interface Transport {
   addChatToFolder?(title: string, chatId: string): Promise<void>;
   /** The Telegram profile of this user id, as the account sees it; undefined when Telegram does not know them to this account. */
   userProfile?(userId: string): Promise<TelegramUserProfile | undefined>;
+  /** The bytes of a photo / file a customer sent (by its `MediaRef`); undefined when it is gone or too large. */
+  downloadMedia?(ref: MediaRef): Promise<{ data: Buffer; mimeType: string } | undefined>;
   /** The Telegram user who holds this @username (without the @), if any. */
   userByUsername?(username: string): Promise<TelegramUserProfile | undefined>;
   healthy(): boolean;

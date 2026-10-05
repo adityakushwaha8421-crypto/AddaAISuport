@@ -81,7 +81,29 @@ Module map and design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Case | Requested (once) |
 |---|---|
 | Deposit | 📱 Registered Number (10-digit) · 🖼️ Payment Screenshot (clear) · 📄 Bank Statement PDF of the account paid from · 🎥 Payment Screen Recording/video — each as a titled line with a one-sentence ask |
-| Withdrawal | 🧾 Withdrawal ID **or** withdrawal-history screenshot · 📄 Bank Statement PDF of the account the amount should have reached — same titled-line format |
+| Withdrawal | Step 1: 🧾 Withdrawal ID **or** a screenshot of the withdrawal history. Step 2 depends on what that shows — see below. |
+
+## Withdrawals are checked in steps
+
+1. The first message of a withdrawal case asks only for the **Withdrawal ID or a screenshot of the
+   withdrawal history**.
+2. The customer's screenshot is read (the model looks at the image). The top-most row is the latest
+   request; if the customer typed an id, the row with that id is used.
+   - **Pending / Processing** → one note, straight from the screenshot, nothing looked up:
+     *"Hello 👋 After placing a withdrawal request, the amount is usually credited to your bank
+     account within 12–24 hours. Thank you for playing with us and for your patience."*
+   - **Success** → the **bank statement PDF** of the receiving account is asked for, once.
+   - Failed, rejected, reversed, no status, not a withdrawal screen, unreadable → nothing; the team looks.
+3. After that one step the case is silent, like every other case, until it is solved
+   (`🔄 WITHDRAWAL REVERSED`) or older than `CASE_REOPEN_HOURS`.
+
+A complaint that already comes with its screenshot skips step 1. A deposit case is untouched: its
+photos are never read. Reading screenshots needs `OPENAI_API_KEY`; without it a withdrawal case is
+silent after step 1.
+
+**A Withdrawal ID typed on its own** says nothing about the status. It needs the team's panel
+(`WithdrawalLookup` in `src/evidence/withdrawalScreenshot.ts`); none is wired, so such a message is
+left to the team (the chat is already filed under Support).
 
 ## When the agent stays silent even for a deposit/withdrawal message
 
@@ -127,8 +149,9 @@ Telegram keeps no empty folder.
 ## Two safety nets
 
 1. **Customer messaging allowlist (code).** `src/control/customerMessaging.ts` keeps
-   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly four message kinds through:
-   `evidence_request`, `payment_confirmed`, `withdrawal_reversed` and `greeting`. Every automatic code path sends through the guarded
+   `CUSTOMER_MESSAGING_ENABLED = false` and allows exactly these message kinds through:
+   `evidence_request`, `withdrawal_pending`, `statement_request`, `payment_confirmed`,
+   `withdrawal_reversed` and `greeting`. Every automatic code path sends through the guarded
    transport (`app.transport`), which refuses any other send or forward to a chat that is not the
    support group or the export bot. Nothing added later can message a customer until it is listed there.
 2. **Kill switch (runtime).** `/botoff` sets `bot_enabled = false` in the store (shared by every

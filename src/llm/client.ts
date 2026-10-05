@@ -1,4 +1,7 @@
-/** Provider-agnostic LLM surface. Used for one thing today: telling deposit from withdrawal. */
+/** Provider-agnostic LLM surface: what a message is about, and reading a withdrawal screenshot. */
+
+/** One part of a user turn: text, or an image the model should look at. */
+export type ContentPart = { type: 'text'; text: string } | { type: 'image'; mimeType: string; data: Buffer; detail?: 'low' | 'high' | 'auto' };
 
 export interface JsonSchema {
   name: string;
@@ -9,7 +12,7 @@ export interface LlmRequestBase {
   /** Short label for metrics/logging. */
   purpose: string;
   system: string;
-  user: string;
+  user: string | ContentPart[];
   maxTokens?: number;
 }
 

@@ -57,6 +57,17 @@ export class FakeTransport implements Transport, ReadStateApi {
     this.humanHistory.set(chatId, [...(this.humanHistory.get(chatId) ?? []), { id, date }]);
     return id;
   }
+  /** Files customers sent: fileRef → bytes (a test names the screenshot by its bytes). */
+  readonly media = new Map<string, Buffer>();
+  failDownloads = 0;
+  async downloadMedia(ref: MediaRef) {
+    if (this.failDownloads > 0) {
+      this.failDownloads--;
+      throw new Error('FILE_REFERENCE_EXPIRED');
+    }
+    const data = this.media.get(ref.fileRef);
+    return data ? { data, mimeType: ref.mimeType ?? 'image/jpeg' } : undefined;
+  }
   /** Telegram's profiles: whoever wrote to the account is known; tests may set others. */
   readonly profiles = new Map<string, TelegramUserProfile>();
   async userProfile(userId: string) {

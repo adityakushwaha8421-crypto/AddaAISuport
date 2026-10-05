@@ -23,11 +23,35 @@ export function requestText(type: IssueType, lang: Language): string {
       pick(lang, 'Payment karte waqt ki screen recording/video bhej dijiye.', 'Please send the screen recording/video taken while making the payment.', 'पेमेंट करते समय की स्क्रीन रिकॉर्डिंग/वीडियो भेज दीजिए।'),
     ].join('\n');
   }
+  // A withdrawal is checked in steps: first which withdrawal, and what it shows (see the workflow).
   return [
-    pick(lang, 'Sir, withdrawal check karne ke liye please ye details bhej dijiye 🙏', 'Sir, to check the withdrawal please send these details 🙏', 'सर, विड्रॉल चेक करने के लिए कृपया ये डिटेल्स भेज दीजिए 🙏'),
+    pick(lang, 'Sir, withdrawal check karne ke liye please ye detail bhej dijiye 🙏', 'Sir, to check the withdrawal please send this 🙏', 'सर, विड्रॉल चेक करने के लिए कृपया ये डिटेल भेज दीजिए 🙏'),
     '',
     '🧾 ' + pick(lang, 'Withdrawal ID', 'Withdrawal ID', 'विड्रॉल ID'),
     pick(lang, 'Apni Withdrawal ID ya withdrawal history ka screenshot bhej dijiye.', 'Please send your Withdrawal ID or a screenshot of your withdrawal history.', 'अपनी विड्रॉल ID या विड्रॉल हिस्ट्री का स्क्रीनशॉट भेज दीजिए।'),
+  ].join('\n');
+}
+
+/** The withdrawal shows as Pending: it is on its way; nothing more is needed from the customer. */
+export function withdrawalPendingText(lang: Language): string {
+  return [
+    pick(lang, 'Hello 👋', 'Hello 👋', 'नमस्ते 👋'),
+    '',
+    pick(
+      lang,
+      'Withdrawal request lagane ke baad amount usually 12–24 hours ke andar aapke bank account me credit ho jata hai.',
+      'After placing a withdrawal request, the amount is usually credited to your bank account within 12–24 hours.',
+      'विड्रॉल रिक्वेस्ट लगाने के बाद अमाउंट आमतौर पर 12–24 घंटे के अंदर आपके बैंक अकाउंट में क्रेडिट हो जाता है।',
+    ),
+    '',
+    pick(lang, 'Hamare saath khelne aur aapke patience ke liye thank you.', 'Thank you for playing with us and for your patience.', 'हमारे साथ खेलने और आपके धैर्य के लिए धन्यवाद।'),
+  ].join('\n');
+}
+
+/** The withdrawal shows as Success but the customer has not received it: now the bank statement is needed. */
+export function statementRequestText(lang: Language): string {
+  return [
+    pick(lang, 'Sir, aapka withdrawal successful dikh raha hai. Check karne ke liye please ye bhej dijiye 🙏', 'Sir, your withdrawal shows as successful. To check it please send this 🙏', 'सर, आपका विड्रॉल सक्सेसफुल दिख रहा है। चेक करने के लिए कृपया ये भेज दीजिए 🙏'),
     '',
     '📄 ' + pick(lang, 'Bank Statement', 'Bank Statement', 'बैंक स्टेटमेंट'),
     pick(lang, 'Jis bank account me amount aana tha, uska Bank Statement PDF bhej dijiye.', 'Please send the bank statement PDF of the account the amount should have reached.', 'जिस बैंक अकाउंट में अमाउंट आना था, उसका बैंक स्टेटमेंट PDF भेज दीजिए।'),

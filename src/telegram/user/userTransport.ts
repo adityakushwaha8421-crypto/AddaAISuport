@@ -64,6 +64,8 @@ export interface UserTransportOptions {
   updateWatchIntervalMs?: number;
 }
 
+/** A screenshot is a few hundred kB; nothing larger is fetched. */
+const MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024;
 const FLOOD_WAIT = /FLOOD_WAIT_(\d+)/;
 /** A FLOOD_WAIT up to this long is waited out in place; longer ones fail and are retried later. */
 const MAX_FLOOD_WAIT_S = 30;
@@ -464,6 +466,21 @@ export class UserTransport implements Transport, ReadStateApi {
     }
     if (!(entity instanceof Api.User)) return undefined;
     return { id: entity.id.toString(), firstName: entity.firstName, lastName: entity.lastName, username: entity.username };
+  }
+
+  /** `fileRef` is "<chatId>:<messageId>" (see `mediaFromUserMessage`). */
+  async downloadMedia(ref: MediaRef): Promise<{ data: Buffer; mimeType: string } | undefined> {
+    const client = this.requireClient();
+    const cut = ref.fileRef.lastIndexOf(':');
+    const chatId = ref.fileRef.slice(0, cut);
+    const messageId = Number(ref.fileRef.slice(cut + 1));
+    if (!chatId || !Number.isInteger(messageId)) return undefined;
+    if ((ref.fileSize ?? 0) > MAX_DOWNLOAD_BYTES) return undefined;
+    const [msg] = await this.withEntityRetry(() => client.getMessages(this.peer(chatId), { ids: [messageId] }));
+    if (!(msg instanceof Api.Message) || !msg.media) return undefined;
+    const data = await client.downloadMedia(msg, {});
+    if (!data || typeof data === 'string' || data.length > MAX_DOWNLOAD_BYTES) return undefined;
+    return { data: Buffer.from(data), mimeType: ref.mimeType ?? 'image/jpeg' };
   }
 
   async userByUsername(username: string): Promise<TelegramUserProfile | undefined> {
