@@ -30,7 +30,7 @@ Decide from the DIRECTION the money was meant to move, never from the mere prese
 - "withdrawal": money LEFT the wallet (withdraw / nikala / payout / winnings) and has not REACHED the customer's bank account.
   Examples: "Withdrawal ka paisa nahi aaya", "Mere paise account me nahi aaye", "Withdraw kiya tha but receive nahi hua", "Mere paise kaha gaye", "Amount bank me credit nahi hua", "winning nahi mili", "payout pending".
 - "match": anything about a match, contest, points, lineup, players, result, ranking, prize distribution or SETTLEMENT, and any REQUEST to add, start or bring a sport, game, league, team or match to the app ("football add karo", "kabaddi kab aayega", "Mai football add karne ka baat kr rha hu") — winnings / a prediction not settled or not credited after the match, settlement pending, wrong prediction result — even when money is also mentioned (a refund for a cancelled match is "match"). Winnings are a "withdrawal" only when the customer withdrew them towards a bank account and they did not arrive.
-- "other": login, OTP, KYC, app problems, account ban, general questions, greetings, thanks, complaints with no money direction, bonus/cashback questions — and ANY question, request or statement in which nothing went wrong, even when it names deposit or withdrawal: "deposit kaise kare", "how to withdraw", "increase my withdrawal amount/limit", "minimum withdrawal kitna hai", "withdrawal time kya hai", "maine withdrawal kiya", "payment kar diya" (a payment was made, no complaint). A case exists only when money that should have shown up or arrived has not, or a payment/withdrawal failed, is pending or was deducted.
+- "other": login, OTP, KYC, app problems, account ban, general questions, greetings, thanks, complaints with no money direction, bonus/cashback questions — and ANY question, request or statement in which nothing went wrong, even when it names deposit or withdrawal: "deposit kaise kare", "how to withdraw", "increase my withdrawal amount/limit", "amount kam nahi kar sakte ho", "withdraw 500 hai usko kam kar sakte ho" (asking to lower the minimum), "minimum withdrawal kitna hai", "withdrawal time kya hai", "maine withdrawal kiya", "payment kar diya" (a payment was made, no complaint). A case exists only when money that should have shown up or arrived has not, or a payment/withdrawal failed, is pending or was deducted.
 - "unclear": money is the topic but even with the context you cannot tell which way it moved ("amount credit nahi hua" alone).
 - "chitchat": a greeting, thanks, "ok", an emoji, an acknowledgement — nothing for the team to do.
 
@@ -67,7 +67,10 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
 
   // Context: "paisa nahi aaya" / "abhi tak nahi hua" / "status?" after "kal withdraw kiya tha" is about that withdrawal.
   const history = (ctx.history ?? []).slice(-RECENT_HISTORY);
-  const vague = dir.moneyTopic || /\b(?:abhi|abi|ab)\s+tak\b|\bkab\s+tak\b|\bstill\b|\byet\b|\bpending\b|\bstatus\b|\bupdate\b|\bkuch\s+hua\b|\bhua\s+kya\b|\bkya\s+hua\b/.test(lexical);
+  // Only a message that itself says something went wrong, or asks after it ("status?", "kab tak?"),
+  // borrows a direction: "300 withdraw" or "amount kam nahi kar sakte ho" after "Withdraw" is a
+  // request about withdrawing, not a withdrawal that failed.
+  const vague = (dir.moneyTopic && dir.problem) || /\b(?:abhi|abi|ab)\s+tak\b|\bkab\s+tak\b|\bstill\b|\byet\b|\bpending\b|\bstatus\b|\bupdate\b|\bkuch\s+hua\b|\bhua\s+kya\b|\bkya\s+hua\b/.test(lexical);
   if (vague) {
     for (const earlier of [...history].reverse()) {
       const e = lexicalForm(earlier);

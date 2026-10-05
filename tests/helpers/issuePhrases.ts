@@ -25,7 +25,7 @@ export const WITHDRAWAL = [
   // the examples given
   'Withdrawal ka paisa nahi aaya', 'Mere paise account me nahi aaye', 'Withdraw kiya tha but receive nahi hua', 'Mere paise kaha gaye', 'Amount bank me credit nahi hua',
   // Hinglish variants
-  'withdrawal pending hai 3 din se', 'winning amount bank me nahi aaya', 'winnings withdraw kiye account me nahi aaye', 'paise nikale the abhi tak nahi mile', 'bank account me transfer nahi hua',
+  'withdrawal pending hai 3 din se', 'withdrawal me paise kam aaye', 'withdraw kiya tha amount kam mila bank me', 'winning amount bank me nahi aaya', 'winnings withdraw kiye account me nahi aaye', 'paise nikale the abhi tak nahi mile', 'bank account me transfer nahi hua',
   'mera withdrawal reject ho gaya paise wapas nahi aaye', 'withdraw request kiya tha status success hai par bank me kuch nahi', 'kal withdraw kiya aaj tak nahi aaya',
   '2000 withdraw kiye account me nahi pahunche', 'payout nahi aaya', 'paise kab aayenge withdrawal ke', 'widrawal nhi aaya',
   'vidraw kiya tha paisa nhi mila', 'mere paise abhi tak nahi aaye', 'amount received nahi hua bank me', 'paisa bank me nahi pahucha', 'withdrawl ho gaya but account me nahi',
@@ -55,6 +55,9 @@ export const OTHER = [
   // names a direction, reports no problem: a question or a request (a customer asking for a higher withdrawal limit got the withdrawal request)
   'Increase my withdrawal amount in app', 'withdrawal limit badhao', 'minimum withdrawal kitna hai', 'deposit kaise kare', 'how to withdraw money', 'maine withdrawal kiya',
   'withdrawal time kya hai', 'deposit bonus milega kya', 'deposit offer kya hai', 'withdrawal', 'deposit',
+  // "make it less" / "can't you …?" asks for something; nothing failed (a customer asking to lower the minimum withdrawal got the withdrawal request)
+  'Amount kam nahi kar sakte ho', 'Sir maine bola withdraw 500 hai usko kam kar skate ho', '300 withdraw', 'withdrawal amount kam nahi kar sakte kya', 'minimum withdrawal kam karo',
+  "can't you reduce the withdrawal amount", 'withdrawal limit kam nahi ho sakta kya', 'deposit minimum kam kar sakte ho',
   // bank ACCOUNT problems, no money in the sentence (a customer who could not verify their bank account got the withdrawal request)
   'Unable to do bank account verification as it is showing bank account is already exist, but have not added my bank account',
   'bank account verification nahi ho raha', 'bank account add nahi ho raha', 'my bank account is not verified', 'bank details galat hai', 'kyc me bank account reject ho gaya',

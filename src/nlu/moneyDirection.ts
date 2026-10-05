@@ -120,7 +120,14 @@ const WITHDRAWAL_GENERIC: Array<[RegExp, number]> = [
  * Without one of these a message only NAMES a direction ("increase my withdrawal amount",
  * "deposit kaise kare", "withdrawal") — a question or a request, not a case.
  */
-const PROBLEM = rx(String.raw`\b(?:${NOT}|pending|pendng|processing|process\s+me|stuck|hold|atka|atke|atki|ruka|ruke|ruki|fail\w*|reject\w*|cancel\w*|decline\w*|unsuccess\w*|problem|problm|issue|isue|dikkat|dikat|samasya|pareshan\w*|complain\w*|galat|wrong|missing|gayab|kat\w*|cut|deduct\w*|debit\w*|minus|kam|empty|khali|khaali|zero|0|same|still|yet|abhi\s+tak|abi\s+tak|ab\s+tak|kab(?:\s*tak)?\s+(?:aayega|ayega|aega|aaega|milega|aayenge|milenge|aayegi|aegi|आएगा|मिलेगा|आएंगे)|kab\s*tak|kaha|kahan|kahaan|kidhar|gone|went|lost|kho\s+gaya|chala\s+gaya|chale\s+gaye|nikal\s+gaya|nikal\s+gaye|wapas|wapis|refund\w*|late|delay\w*|der|slow|error|double|twice|do\s+baar|dobara|नहीं|नही|ना|पेंडिंग|अटका|अटके|रुका|रुके|फेल|रिजेक्ट|गलत|कट|कटे|कहाँ|कहां|खाली|समस्या|दिक्कत|वापस|रिफंड|देर)\b`);
+const PROBLEM = rx(String.raw`\b(?:${NOT}|pending|pendng|processing|process\s+me|stuck|hold|atka|atke|atki|ruka|ruke|ruki|fail\w*|reject\w*|cancel\w*|decline\w*|unsuccess\w*|problem|problm|issue|isue|dikkat|dikat|samasya|pareshan\w*|complain\w*|galat|wrong|missing|gayab|kat\w*|cut|deduct\w*|debit\w*|minus|kam\s+(?:aaya|aaye|aayi|aya|aye|ayi|mila|mile|mili|diya|diye|credit\w*|hua|hue|hui|received|aa\s*raha|aa\s*rha)|empty|khali|khaali|zero|0|same|still|yet|abhi\s+tak|abi\s+tak|ab\s+tak|kab(?:\s*tak)?\s+(?:aayega|ayega|aega|aaega|milega|aayenge|milenge|aayegi|aegi|आएगा|मिलेगा|आएंगे)|kab\s*tak|kaha|kahan|kahaan|kidhar|gone|went|lost|kho\s+gaya|chala\s+gaya|chale\s+gaye|nikal\s+gaya|nikal\s+gaye|wapas|wapis|refund\w*|late|delay\w*|der|slow|error|double|twice|do\s+baar|dobara|नहीं|नही|ना|पेंडिंग|अटका|अटके|रुका|रुके|फेल|रिजेक्ट|गलत|कट|कटे|कहाँ|कहां|खाली|समस्या|दिक्कत|वापस|रिफंड|देर)\b`);
+
+/**
+ * "… nahi kar sakte ho?", "… nahi ho sakta kya?", "can't you …?": a negation that ASKS for
+ * something. It reports no failure, so it is taken out before looking for a problem. The first
+ * person ("nahi kar pa raha hu", "nahi kar sakta") is a failure and stays.
+ */
+const REQUEST_NEGATION = rx(String.raw`\b${NOT}\s+(?:\S+\s+)?(?:sakte|skte|skate|sakti)(?:\s+(?:ho|hai|hain|h|kya|aap))?\b|\b${NOT}\s+ho\s+sakta\s+(?:kya|hai\s+kya)\b|\b(?:can'?t|cant|couldn'?t|couldnt|can\s+not|cannot|could\s+not|won'?t|wont)\s+you\b|\b(?:can|could|will)\s+you\s+not\b|\bकर\s+सकते\b`);
 
 /** Money is what the message is about, even when no direction can be read. */
 const MONEY_TOPIC = rx(String.raw`\b(?:${MONEY}|payment|paymnt|balance|balence|credit\w*|refund\w*|bonus|cashback|transaction|txn|wallet|walet|पेमेंट|बैलेंस|क्रेडिट|रिफंड|बोनस)\b`);
@@ -141,5 +148,6 @@ export function moneyDirection(t: string): MoneyDirection {
   const margin = Math.abs(deposit - withdrawal);
   const type = best > 0 && margin >= 1 ? (deposit > withdrawal ? 'deposit' : 'withdrawal') : undefined;
   const named = type === 'deposit' ? hasNamed(DEPOSIT_CUES, t) : type === 'withdrawal' ? hasNamed(WITHDRAWAL_CUES, t) : false;
-  return { deposit, withdrawal, type, named, problem: PROBLEM.test(t), moneyTopic: best > 0 || MONEY_TOPIC.test(t) };
+  const problem = PROBLEM.test(t.replace(new RegExp(REQUEST_NEGATION.source, 'gu'), ' '));
+  return { deposit, withdrawal, type, named, problem, moneyTopic: best > 0 || MONEY_TOPIC.test(t) };
 }

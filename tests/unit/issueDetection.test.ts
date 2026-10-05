@@ -50,6 +50,12 @@ describe('issue detection (offline)', () => {
     expect(await classify('deposit nahi hua', ['withdraw kiya tha'])).toMatchObject({ type: 'deposit', source: 'lexical' });
     // No money talk at all: the history does not turn small talk into a case.
     expect((await classify('hello sir', ['withdraw kiya tha'])).type).toBeUndefined();
+    // A request after "Withdraw" is still a request: nothing failed, so nothing is borrowed.
+    for (const m of ['Amount kam nahi kar sakte ho', '300 withdraw', 'Sir maine bola withdraw 500 hai usko kam kar skate ho', 'amount kitna hai minimum']) {
+      expect((await classify(m, ['Hlo', 'Withdraw'])).type, m).toBeUndefined();
+    }
+    // …while a real complaint after the same "Withdraw" is one.
+    expect(await classify('paisa nahi aaya', ['Hlo', 'Withdraw'])).toMatchObject({ type: 'withdrawal', source: 'context' });
   });
 
   it('with no context, the bare "mere paise nahi aaye" leans withdrawal (money the customer was waiting to receive)', async () => {
