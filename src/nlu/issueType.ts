@@ -92,7 +92,17 @@ export async function classifyIssue(text: string, llm: LlmClient | undefined, lo
         ? `Earlier messages from this customer (oldest first):\n${history.map((h) => `- ${h.slice(0, 300)}`).join('\n')}\n\nLatest message:\n${text.slice(0, 1500)}`
         : text.slice(0, 1500);
       const r = await llm.json<{ issue: IssueCategory }>({ purpose: 'issue_type', system: SYSTEM, user, schema: SCHEMA, maxTokens: 20 });
-      if (r.issue === 'deposit' || r.issue === 'withdrawal') return dir.problem ? { type: r.issue, category: r.issue, source: 'llm' } : { category: 'other', source: 'llm' };
+      // The model names the direction; the message itself must say that something went wrong AND be
+      // about money (a money word, a sum, a payment cue). "bank details galat hai" has a problem
+      // word and no money in it: an account matter, whatever direction the model reads into it.
+      if (r.issue === 'deposit' || r.issue === 'withdrawal') {
+        const aboutMoney = dir.moneyTopic || /\d{2,}/.test(lexical);
+        if (!dir.problem || !aboutMoney) return { category: 'other', source: 'llm' };
+        // Two or three words with no direction in them ("transaction failed", "credit nahi hua")
+        // give the model nothing to read a direction from: it would be a guess. Not guessed.
+        if (!dir.type && words < 4) return { category: 'unclear', source: 'llm' };
+        return { type: r.issue, category: r.issue, source: 'llm' };
+      }
       if (r.issue === 'match' || r.issue === 'other' || r.issue === 'unclear' || r.issue === 'chitchat') return { category: r.issue, source: 'llm' };
     } catch (err) {
       log.warn({ err }, 'issue classification by the model failed; using the lexical reading only');

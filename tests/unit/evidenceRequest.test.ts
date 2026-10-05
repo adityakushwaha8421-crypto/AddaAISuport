@@ -96,6 +96,18 @@ describe('identify the issue, request once, then silence', () => {
     expect(llm.calls.filter((c) => c.purpose === 'issue_type')).toHaveLength(2);
   });
 
+  it('the model alone cannot open a case: the message must say something went wrong and be about money', async () => {
+    const llm = new ScriptedLlm();
+    llm.on('issue_type', () => ({ issue: 'withdrawal' })); // the model says "withdrawal" to everything
+    build({ llm });
+    for (const m of ['bank details galat hai', 'Amount kam nahi kar sakte ho', 'withdrawal limit badhao', 'kyc reject ho gaya', 'account verify nahi ho raha', 'transaction failed', 'credit nahi hua']) {
+      expect(await say(`g-${m}`, m), m).toBe('not_an_issue');
+    }
+    expect(t.sent).toHaveLength(0);
+    // Money, and something wrong with it: the model's direction is taken.
+    expect(await say('g-ok', 'bhai 4 din ho gaye kuch nahi aaya 2000 ka')).toBe('requested');
+  });
+
   it('after the request the chat is completely silent — even for a different kind of problem — until the case is old', async () => {
     expect(await say('two', 'deposit nahi hua')).toBe('requested');
     expect(await say('two', 'aur mera withdrawal bhi nahi aaya')).toBe('already_requested');
