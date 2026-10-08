@@ -45,6 +45,16 @@ describe.each(allStoreFactories)('Store contract: $name', (factory) => {
     expect((await store.requests.listOpen('c2'))[0]?.stage).toBeUndefined();
   });
 
+  it('a human reply hands the chat\'s open requests over: no longer open, not counted as solved either', async () => {
+    const a = await store.requests.create({ chatId: 'c1', userId: 'u1', issueType: 'deposit', language: 'hinglish' });
+    await store.requests.markSent(a.id, 1);
+    await store.requests.create({ chatId: 'c2', userId: 'u2', issueType: 'deposit', language: 'hinglish' });
+    expect(await store.requests.markHandedOver('c1', new Date('2026-10-08T10:00:00Z'))).toBe(1);
+    expect(await store.requests.listOpen('c1')).toEqual([]);
+    expect(await store.requests.listOpen('c2')).toHaveLength(1);
+    expect(await store.requests.markHandedOver('c1', new Date())).toBe(0);
+  });
+
   it('remembers the mobile numbers a customer typed and finds customers by number', async () => {
     await store.users.upsert({ id: 'u1', chatId: 'c1' });
     await store.users.upsert({ id: 'u2', chatId: 'c2' });

@@ -70,8 +70,11 @@ const envSchema = z.object({
   /** Folder titles on the account, as shown in Telegram (at most 12 characters each). */
   SUPPORT_FOLDER: z.string().trim().min(1).max(12).default('Support'),
   MATCH_ISSUES_FOLDER: z.string().trim().min(1).max(12).default('Match issues'),
-  /** Comma-separated titles of the account's chat folders a customer chat leaves once a human has replied in it. Empty: off. */
-  HUMAN_REPLY_FOLDERS: z.string().default('Support,Match issues'),
+  /** Where deposit / withdrawal cases go. Unset: the support folder. */
+  DEPOSIT_FOLDER: z.string().trim().min(1).max(12).optional(),
+  WITHDRAWAL_FOLDER: z.string().trim().min(1).max(12).optional(),
+  /** Comma-separated titles of the chat folders a customer chat leaves once a human has replied in it. Empty (default): every folder above. */
+  HUMAN_REPLY_FOLDERS: z.string().default(''),
 
   // ── Database ────────────────────────────────────────────────────────────
   STORE: z.enum(['postgres', 'memory']).default('postgres'),

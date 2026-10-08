@@ -102,6 +102,8 @@ export class EvidenceRequestWorkflow {
     const open = await store.requests.listOpen(msg.chatId);
     const reopenMs = (this.o.reopenHours ?? 48) * 3_600_000;
     const active = open.find((r) => r.status === 'sending' || now.getTime() - r.createdAt.getTime() < reopenMs);
+    // Every live message inside an open case keeps the chat where the team looks for it.
+    if (active) await this.o.onClassified?.({ chatId: msg.chatId, userId: msg.userId, category: active.issueType }).catch((err) => clog.warn({ err }, 'classification listener failed'));
 
     // A withdrawal case waiting for its Withdrawal ID / screenshot: this message may be it. What it
     // shows decides the one next message — still pending → the 12–24 hours note; successful → the
@@ -291,7 +293,9 @@ export class EvidenceRequestWorkflow {
     // restart lost it): create it, so the takeover is recorded either way.
     await store.users.upsert({ id: ev.chatId, chatId: ev.chatId });
     await store.users.setHumanTakeover(ev.chatId, this.takeoverUntil(now));
-    log.info({ chat: ev.chatId, hours: this.o.takeoverHours ?? 24 }, 'a human wrote in this chat: the agent stays out');
+    // The agent's open case is the human's now: whatever the customer raises next is a new case.
+    const handed = await store.requests.markHandedOver(ev.chatId, now);
+    log.info({ chat: ev.chatId, hours: this.o.takeoverHours ?? 24, casesHandedOver: handed }, 'a human wrote in this chat: the agent stays out');
     return 'takeover';
   }
 

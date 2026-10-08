@@ -126,14 +126,26 @@ left to the team (the chat is already filed under Support).
 
 ## Chat folders for the team
 
-Every classified customer message files the chat into one of the account's chat folders, so the
-team sees what is waiting: a match matter — points, lineup, result, settlement, or a request to add
-a sport ("football add karo", "Mai football add karne ka baat kr rha hu") — goes to
-`MATCH_ISSUES_FOLDER` (**Match issues**); a deposit/withdrawal case, any other support matter
-(login, KYC, app problems) or an unclear money message goes to `SUPPORT_FOLDER` (**Support**);
-greetings, thanks and "ok" go nowhere. Filing never sends anything to the customer. It happens once
-per classified message, only while the bot is ON (nothing is classified while OFF), and a failed
-folder edit is only logged. `CHAT_FOLDERS_ENABLED=false` turns it off.
+The folders hold exactly the chats waiting for the team.
+
+1. **What a chat is about decides the folder.** A match matter — points, lineup, result,
+   settlement, a request to add a sport — goes to `MATCH_ISSUES_FOLDER` (**Match issues**). A
+   deposit case goes to `DEPOSIT_FOLDER`, a withdrawal case to `WITHDRAWAL_FOLDER` (both default to
+   the support folder). Any other support matter (login, KYC, app problems) or an unclear money
+   message goes to `SUPPORT_FOLDER` (**Support**). Greetings, thanks and "ok" go nowhere.
+2. **New and active issues are filed.** The first message of a case files the chat, and every
+   later message inside the open case keeps it there (one folder edit, not one per message).
+3. **A human reply takes the chat out** of every folder and **hands the case over**: the agent's
+   open case is closed as the human's, and the agent stays out for `HUMAN_TAKEOVER_HOURS`.
+4. **The same customer later raises an issue again** — after the takeover has passed — and it is
+   a new case: classified afresh, filed again (in its own folder), with its own request.
+5. **Existing conversations are never mixed with new cases.** A chat where a human wrote within
+   `HUMAN_TAKEOVER_HOURS` is the human's and is not filed; a human reply from weeks ago does not
+   make it one. Old messages replayed after a restart (stale), messages while the bot is OFF, and
+   chats whose history could not be checked file nothing.
+
+Filing never sends anything to the customer, and a failed folder edit is only logged.
+`CHAT_FOLDERS_ENABLED=false` turns it off.
 
 ## When a human replies: the chat leaves the team's folders
 
@@ -141,7 +153,7 @@ The team files waiting customer chats into Telegram chat folders on the account 
 **Support** and **Match issues**). Once a human replies in a customer chat from the account, the
 agent takes that chat out of those folders automatically, right after the reply is sent: it is dealt
 with. The customer is never told, nothing else changes, and a failed folder edit is only logged.
-Folder titles come from `HUMAN_REPLY_FOLDERS` (comma-separated, as shown in Telegram; empty = off).
+By default every configured folder is covered; `HUMAN_REPLY_FOLDERS` (comma-separated titles) narrows it.
 This is account housekeeping, not a message, so it also runs while the bot is `/botoff`. Only ordinary
 folders are edited (shared folder links are left alone); a folder emptied this way is deleted, because
 Telegram keeps no empty folder.

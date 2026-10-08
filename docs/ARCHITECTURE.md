@@ -18,9 +18,12 @@ telegram/user/userTransport.ts ── screens the sender (own account, bots, con
    ▼
 app.ts ─ onMessage:  admin command? → control/adminCommands.ts (replies through the RAW transport)
                      else → users.upsert + messages.insert (scrubbed) → workflows/evidenceRequest.ts
-                            → onClassified → workflows/chatFiling.ts (match → MATCH_ISSUES_FOLDER, chitchat →
-                              nowhere, everything else → SUPPORT_FOLDER; raw transport addChatToFolder)
-        ─ onOwnOutgoing → evidenceRequest.onOwnOutgoing (human takeover for HUMAN_TAKEOVER_HOURS)
+                            → onClassified (on classification, and on every message inside an open case) →
+                              workflows/chatFiling.ts (match → MATCH_ISSUES_FOLDER, deposit/withdrawal → their
+                              folders, chitchat → nowhere, everything else → SUPPORT_FOLDER; raw transport
+                              addChatToFolder; placement remembered per chat until a human reply)
+        ─ onOwnOutgoing → evidenceRequest.onOwnOutgoing (human takeover for HUMAN_TAKEOVER_HOURS; the chat's open
+                          requests become 'handed_over', so the customer's next issue is a new case)
                         → humanReplyFolders.onHumanReply (the chat leaves the HUMAN_REPLY_FOLDERS
                           folders via the RAW transport's removeChatFromFolders; ON or OFF)
         ─ onExportMessage → workflows/paymentConfirmed.ts

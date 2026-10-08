@@ -143,8 +143,12 @@ class PgRequests implements EvidenceRequestRepo {
     await this.db.query(`DELETE FROM evidence_requests WHERE id = $1`, [id]);
   }
   async listOpen(chatId: string) {
-    const { rows } = await this.db.query(`SELECT * FROM evidence_requests WHERE chat_id = $1 AND status <> 'solved' ORDER BY created_at DESC`, [chatId]);
+    const { rows } = await this.db.query(`SELECT * FROM evidence_requests WHERE chat_id = $1 AND status NOT IN ('solved', 'handed_over') ORDER BY created_at DESC`, [chatId]);
     return rows.map(toRequest);
+  }
+  async markHandedOver(chatId: string, at: Date) {
+    const r = await this.db.query(`UPDATE evidence_requests SET status = 'handed_over', solved_at = $2 WHERE chat_id = $1 AND status IN ('sent', 'sending')`, [chatId, at]);
+    return r.rowCount ?? 0;
   }
   async markSolved(userId: string, at: Date) {
     const r = await this.db.query(`UPDATE evidence_requests SET status = 'solved', solved_at = $2 WHERE user_id = $1 AND status <> 'solved'`, [userId, at]);

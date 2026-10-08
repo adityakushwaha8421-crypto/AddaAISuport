@@ -87,7 +87,9 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       reopenHours: env.CASE_REOPEN_HOURS,
       takeoverHours: env.HUMAN_TAKEOVER_HOURS,
       humanReplyFolders: env.HUMAN_REPLY_FOLDERS.split(',').map((s) => s.trim()).filter(Boolean),
-      chatFolders: env.CHAT_FOLDERS_ENABLED ? { support: env.SUPPORT_FOLDER, match: env.MATCH_ISSUES_FOLDER } : undefined,
+      chatFolders: env.CHAT_FOLDERS_ENABLED
+        ? { support: env.SUPPORT_FOLDER, match: env.MATCH_ISSUES_FOLDER, deposit: env.DEPOSIT_FOLDER ?? env.SUPPORT_FOLDER, withdrawal: env.WITHDRAWAL_FOLDER ?? env.SUPPORT_FOLDER }
+        : undefined,
       version,
       transportStats: () => ({ reconnects: transport.reconnectCount, lastUpdateAt: transport.lastUpdateAt }),
     },

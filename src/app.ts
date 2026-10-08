@@ -13,7 +13,7 @@ import { scrubber } from './security/scrubber.js';
 import type { Store } from './storage/types.js';
 import type { ReadStateApi, SupportGroupMessage, Transport } from './telegram/transport.js';
 import { EvidenceRequestWorkflow, type RequestOutcome } from './workflows/evidenceRequest.js';
-import { ChatFiling } from './workflows/chatFiling.js';
+import { ChatFiling, type FolderTitles } from './workflows/chatFiling.js';
 import { HumanReplyFolders } from './workflows/humanReplyFolders.js';
 import { PaymentConfirmedWorkflow } from './workflows/paymentConfirmed.js';
 
@@ -33,8 +33,8 @@ export interface AppConfig {
   takeoverHours?: number;
   /** Chat folders a customer chat leaves once a human has replied in it (HUMAN_REPLY_FOLDERS). */
   humanReplyFolders?: string[];
-  /** Folders a classified customer message files the chat into (SUPPORT_FOLDER / MATCH_ISSUES_FOLDER); unset = no filing. */
-  chatFolders?: { support: string; match: string };
+  /** Folders a customer chat is filed into by what it is about (SUPPORT_FOLDER, MATCH_ISSUES_FOLDER, DEPOSIT_FOLDER, WITHDRAWAL_FOLDER); unset = no filing. */
+  chatFolders?: FolderTitles;
   /** Shown by /status. */
   version?: string;
   transportStats?: () => { reconnects: number; lastUpdateAt: Date };
@@ -106,7 +106,9 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     onClassified: async (ev) => void (await filing.file(ev.chatId, ev.category)),
   });
   const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, directory: c.transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
-  const folders = new HumanReplyFolders({ transport: c.transport, titles: cfg.humanReplyFolders ?? [], log: c.log.child({ mod: 'folders' }) });
+  // A human's reply takes the chat out of every folder in use (or the explicitly configured list).
+  const removalTitles = cfg.humanReplyFolders?.length ? cfg.humanReplyFolders : filing.folders;
+  const folders = new HumanReplyFolders({ transport: c.transport, titles: removalTitles, log: c.log.child({ mod: 'folders' }) });
   // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.
   const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart, status: () => status() });
   const otherCopy = new OtherCopyDetector();
@@ -125,8 +127,8 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}, ${greetingsSent} greeting${greetingsSent === 1 ? '' : 's'}`,
     ];
     if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
-    if (filing.enabled) lines.push(`Folders: ${filing.filed} chat${filing.filed === 1 ? '' : 's'} filed into ${cfg.chatFolders!.support} / ${cfg.chatFolders!.match} since start`);
-    if (folders.enabled) lines.push(`Folders: ${folders.removed} chat${folders.removed === 1 ? '' : 's'} taken out of ${(cfg.humanReplyFolders ?? []).join(' / ')} after a human reply`);
+    if (filing.enabled) lines.push(`Folders: ${filing.filed} chat${filing.filed === 1 ? '' : 's'} filed into ${filing.folders.join(' / ')} since start`);
+    if (folders.enabled) lines.push(`Folders: ${folders.removed} chat${folders.removed === 1 ? '' : 's'} taken out of ${removalTitles.join(' / ')} after a human reply`);
     lines.push(seen.length
       ? `⚠️ OLD bot wording seen ${seen.length}× in the last 24h (last ${seen[seen.length - 1]!.at.toISOString().slice(11, 16)} UTC, chat ${seen[seen.length - 1]!.chatId}): another copy of the old bot is replying`
       : 'No old-bot replies seen in the last 24h');
@@ -189,6 +191,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
         c.log.warn({ chat: ev.chatId, message: ev.messageId, sightings24h: otherCopy.recent(now(), 24).length }, 'ANOTHER COPY OF THE OLD BOT replied in this chat (old wording, not sent by this process)');
       }
       await requests.onOwnOutgoing(ev);
+      filing.forget(ev.chatId);
       await folders.onHumanReply(ev.chatId);
     },
     async onExportMessage(msg) {

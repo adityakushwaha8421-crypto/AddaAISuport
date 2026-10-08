@@ -126,7 +126,13 @@ class MemoryRequests implements EvidenceRequestRepo {
     this.save();
   }
   async listOpen(chatId: string) {
-    return clone(this.rows.filter((r) => r.chatId === chatId && r.status !== 'solved').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+    return clone(this.rows.filter((r) => r.chatId === chatId && r.status !== 'solved' && r.status !== 'handed_over').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+  }
+  async markHandedOver(chatId: string, at: Date) {
+    let n = 0;
+    for (const r of this.rows) if (r.chatId === chatId && (r.status === 'sent' || r.status === 'sending')) Object.assign(r, { status: 'handed_over', solvedAt: at }), n++;
+    if (n) this.save();
+    return n;
   }
   async markSolved(userId: string, at: Date) {
     let n = 0;

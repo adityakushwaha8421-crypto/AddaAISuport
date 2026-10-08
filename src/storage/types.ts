@@ -37,7 +37,8 @@ export interface UserRepo {
 
 // ── Evidence requests (one per case) ───────────────────────────────────────
 
-export type EvidenceRequestStatus = 'sending' | 'sent' | 'solved';
+/** `handed_over`: a human replied in the chat; the agent's case is theirs, and the customer's next issue is a new case. */
+export type EvidenceRequestStatus = 'sending' | 'sent' | 'solved' | 'handed_over';
 
 export type RequestStage = 'awaiting_evidence' | 'pending_told' | 'statement_requested';
 
@@ -66,10 +67,12 @@ export interface EvidenceRequestRepo {
   setStage(id: string, stage: RequestStage): Promise<void>;
   /** The request never went out: forget it so the next message may ask again. */
   remove(id: string): Promise<void>;
-  /** Requests in a chat that are not solved, newest first. */
+  /** Requests in a chat that are neither solved nor handed over, newest first. */
   listOpen(chatId: string): Promise<EvidenceRequest[]>;
   /** Close every open request of a user (the team confirmed the payment). Returns how many. */
   markSolved(userId: string, at: Date): Promise<number>;
+  /** A human replied in the chat: its open requests are theirs now. Returns how many. */
+  markHandedOver(chatId: string, at: Date): Promise<number>;
 }
 
 // ── Messages ───────────────────────────────────────────────────────────────

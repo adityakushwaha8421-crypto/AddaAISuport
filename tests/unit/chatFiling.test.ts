@@ -17,10 +17,11 @@ import { ADMIN, EXPORT_BOT, FakeTransport, NOW, SUPPORT, customerSends } from '.
  * support matter into Support, small talk nowhere. Filing never sends anything to the customer,
  * and a human's reply takes the chat out again.
  */
-const FOLDERS = { support: 'Support', match: 'Match issues' };
+const FOLDERS = { support: 'Support', match: 'Match issues', deposit: 'Support', withdrawal: 'Support' };
 let store: MemoryStore;
 let t: FakeTransport;
 let app: App;
+let now: Date;
 const llm = () => {
   const l = new ScriptedLlm();
   l.on('issue_type', (req) => {
@@ -31,80 +32,155 @@ const llm = () => {
   });
   return l;
 };
-const build = (opts: { folders?: typeof FOLDERS; llm?: ScriptedLlm } = { folders: FOLDERS, llm: llm() }) => {
+const build = (opts: { folders?: typeof FOLDERS; llm?: ScriptedLlm | null; staleSeconds?: number } = {}) => {
   store = new MemoryStore();
   t = new FakeTransport();
-  app = assemble({ store, transport: t, log: silentLogger, clock: () => NOW, llm: opts.llm, readState: t }, { adminIds: [ADMIN], supportChatId: SUPPORT, exportChatId: EXPORT_BOT, chatFolders: opts.folders, humanReplyFolders: ['Support', 'Match issues'] });
+  now = NOW;
+  app = assemble(
+    { store, transport: t, log: silentLogger, clock: () => now, llm: opts.llm === null ? undefined : (opts.llm ?? llm()), readState: t },
+    { adminIds: [ADMIN], supportChatId: SUPPORT, exportChatId: EXPORT_BOT, chatFolders: opts.folders === undefined && !('folders' in opts) ? FOLDERS : opts.folders, staleSeconds: opts.staleSeconds ?? 0, reopenHours: 48, takeoverHours: 24 },
+  );
 };
-const say = (userId: string, text: string) => app.onMessage(t.inbound(userId, text, [], NOW));
+const say = (userId: string, text: string) => app.onMessage(t.inbound(userId, text, [], now));
+const humanReplies = (chatId: string, text = 'Sir, dekh raha hoon') => app.onOwnOutgoing({ chatId, messageId: t.nextId(chatId), text });
 const where = (chatId: string) => [...t.folders.entries()].filter(([, chats]) => chats.has(chatId)).map(([title]) => title);
+const advance = (minutes: number) => (now = new Date(now.getTime() + minutes * 60_000));
 
-describe('what goes where', () => {
-  it('match → Match issues; deposit, withdrawal, other, unclear → Support; chitchat → nowhere', () => {
+describe('1. what a chat is about decides its folder', () => {
+  it('match → Match issues; deposit and withdrawal → their folders (Support by default); other and unclear → Support; chitchat → nowhere', () => {
     expect(folderFor('match')).toBe('match');
-    for (const c of ['deposit', 'withdrawal', 'other', 'unclear'] as const) expect(folderFor(c)).toBe('support');
+    expect(folderFor('deposit')).toBe('deposit');
+    expect(folderFor('withdrawal')).toBe('withdrawal');
+    for (const c of ['other', 'unclear'] as const) expect(folderFor(c)).toBe('support');
     expect(folderFor('chitchat')).toBe('none');
+  });
+
+  it('deposit and withdrawal can have folders of their own', async () => {
+    build({ folders: { support: 'Support', match: 'Match issues', deposit: 'Deposits', withdrawal: 'Withdrawals' } });
+    expect(await say('d1', 'deposit nahi hua')).toBe('requested');
+    expect(await say('w1', 'withdrawal nahi aaya')).toBe('requested');
+    expect(await say('o1', 'login nahi ho raha')).toBe('not_an_issue');
+    expect([where('d1'), where('w1'), where('o1')]).toEqual([['Deposits'], ['Withdrawals'], ['Support']]);
+    expect(app.filing.folders.sort()).toEqual(['Deposits', 'Match issues', 'Support', 'Withdrawals']);
+    // and a human reply clears whichever folder the chat is in
+    await humanReplies('d1');
+    expect(where('d1')).toEqual([]);
   });
 });
 
-describe('filing customer chats', () => {
-  it('"Mai football add karne ka baat kr rha hu": no evidence request, the chat goes to Match issues', async () => {
-    build();
-    expect(await say('f1', 'Mai football add karne ka baat kr rha hu')).toBe('not_an_issue');
-    expect(customerSends(t)).toHaveLength(0);
-    expect(where('f1')).toEqual(['Match issues']);
-    expect(await say('f2', 'football add karo')).toBe('not_an_issue');
-    expect(await say('f3', 'Sir app mein Kabaddi to add karo')).toBe('not_an_issue');
-    expect([where('f2'), where('f3')]).toEqual([['Match issues'], ['Match issues']]);
-    expect(app.filing.filed).toBe(3);
-  });
-
-  it('a settlement or points problem goes to Match issues without the model', async () => {
-    build({ folders: FOLDERS });
-    expect(await say('m1', 'match khatam ho gaya winning nahi mili')).toBe('not_an_issue');
-    expect(await say('m2', 'points kam mile')).toBe('not_an_issue');
-    expect([where('m1'), where('m2')]).toEqual([['Match issues'], ['Match issues']]);
-    expect(customerSends(t)).toHaveLength(0);
-  });
-
-  it('a deposit case: the one request goes out AND the chat is filed under Support; a withdrawal too', async () => {
+describe('2. new and active issues are in the right folder', () => {
+  it('a new deposit case: the request goes out and the chat is under Support; a withdrawal, a match problem, a sports request, a login problem likewise', async () => {
     build();
     expect(await say('d1', 'deposit nahi hua')).toBe('requested');
-    expect(where('d1')).toEqual(['Support']);
     expect(await say('w1', 'withdrawal nahi aaya')).toBe('requested');
-    expect(where('w1')).toEqual(['Support']);
-    expect(customerSends(t).map((s) => s.chatId)).toEqual(['d1', 'w1']);
-    // Inside the case nothing is classified, so nothing is re-filed (one folder edit per case).
-    expect(await say('d1', 'hello?')).toBe('already_requested');
-    expect(t.filedCalls.filter((c) => c.chatId === 'd1')).toHaveLength(1);
-  });
-
-  it('another support matter (login, KYC) is filed under Support; small talk and greetings are not filed', async () => {
-    build();
+    expect(await say('m1', 'points kam mile')).toBe('not_an_issue');
+    expect(await say('f1', 'Mai football add karne ka baat kr rha hu')).toBe('not_an_issue');
     expect(await say('o1', 'login nahi ho raha')).toBe('not_an_issue');
-    expect(where('o1')).toEqual(['Support']);
-    expect(await say('o2', 'thanks sir')).toBe('not_an_issue');
-    expect(where('o2')).toEqual([]);
-    expect(await say('o4', 'ok')).toBe('not_an_issue'); // one word, never sent to the model: nothing to file
-    expect(where('o4')).toEqual([]);
-    expect(await say('o3', 'Hi')).toBe('greeted'); // answered by the greeting rule, never classified
-    expect(where('o3')).toEqual([]);
+    expect([where('d1'), where('w1'), where('m1'), where('f1'), where('o1')]).toEqual([['Support'], ['Support'], ['Match issues'], ['Match issues'], ['Support']]);
+    expect(customerSends(t).map((s) => s.chatId)).toEqual(['d1', 'w1']);
   });
 
-  it('a human reply takes the filed chat out again', async () => {
+  it('every message inside an open case keeps the chat filed, with one folder edit, not one per message', async () => {
     build();
-    await say('h1', 'football add karo');
-    expect(where('h1')).toEqual(['Match issues']);
-    await app.onOwnOutgoing({ chatId: 'h1', messageId: t.nextId('h1'), text: 'Sir, next season me aayega' });
-    expect(where('h1')).toEqual([]);
+    await say('d1', 'deposit nahi hua');
+    await say('d1', '9810822372');
+    await say('d1', 'ye lo screenshot');
+    await app.onMessage({ ...t.inbound('d1', undefined, [], now), media: [{ kind: 'photo', fileRef: 'd1:p', mimeType: 'image/jpeg' }] });
+    expect(where('d1')).toEqual(['Support']);
+    expect(t.filedCalls.filter((c) => c.chatId === 'd1')).toHaveLength(1);
+    expect(customerSends(t)).toHaveLength(1);
   });
 
-  it('off while the bot is OFF (nothing is classified), off when no folders are configured, and a failed edit is only logged', async () => {
+  it('greetings, thanks and one-word replies are not filed', async () => {
     build();
-    await say(ADMIN, '/botoff');
-    expect(await say('x1', 'football add karo')).toBe('bot_off');
+    expect(await say('g1', 'Hi')).toBe('greeted');
+    expect(await say('g2', 'thanks sir')).toBe('not_an_issue');
+    expect(await say('g3', 'ok')).toBe('not_an_issue');
     expect(t.filedCalls).toHaveLength(0);
-    build({ folders: undefined, llm: llm() });
+  });
+});
+
+describe('3. a human reply takes the chat out and hands the case over', () => {
+  it('after the human replies the chat is in no folder and the case is theirs', async () => {
+    build();
+    await say('d1', 'deposit nahi hua');
+    expect(where('d1')).toEqual(['Support']);
+    await humanReplies('d1');
+    expect(where('d1')).toEqual([]);
+    expect(await store.requests.listOpen('d1')).toHaveLength(0);
+    // while the human is in the conversation (24 h) the customer's replies file nothing
+    expect(await say('d1', 'ok sir ye lo 9810822372')).toBe('human');
+    expect(await say('d1', 'deposit abhi tak nahi hua')).toBe('human');
+    expect(where('d1')).toEqual([]);
+    expect(customerSends(t)).toHaveLength(1);
+  });
+});
+
+describe('4. the same customer later raises an issue again: filed again', () => {
+  it('after the human takeover has passed, a new issue is a new case: request again, folder again', async () => {
+    build();
+    await say('d1', 'deposit nahi hua');
+    await humanReplies('d1');
+    advance(25 * 60);
+    expect(await say('d1', 'sir deposit phir se nahi hua 300 ka')).toBe('requested');
+    expect(where('d1')).toEqual(['Support']);
+    expect(customerSends(t).map((s) => s.chatId)).toEqual(['d1', 'd1']);
+    // and a different kind of issue goes to its own folder
+    await humanReplies('d1');
+    advance(25 * 60);
+    expect(await say('d1', 'match cancel ho gaya points nahi mile')).toBe('not_an_issue');
+    expect(where('d1')).toEqual(['Match issues']);
+  });
+
+  it('a case the human never touched stays filed for its 48 hours and leaves the folder only through a human reply', async () => {
+    build();
+    await say('d2', 'deposit nahi hua');
+    advance(47 * 60);
+    expect(await say('d2', 'koi hai?')).toBe('already_requested');
+    expect(where('d2')).toEqual(['Support']);
+  });
+});
+
+describe('5. existing conversations are not mixed with new incoming cases', () => {
+  it('a chat where a human wrote recently (before the agent saw it) is the human\'s: not filed, not answered', async () => {
+    build();
+    t.humanWroteEarlier('e1', new Date(now.getTime() - 60 * 60_000));
+    expect(await say('e1', 'deposit nahi hua')).toBe('existing_conversation');
+    expect(where('e1')).toEqual([]);
+    expect(await say('e1', 'bhai kuch to bolo')).toBe('human');
+    expect(where('e1')).toEqual([]);
+    // the same chat, once the human has been quiet for a day, is a new incoming case
+    advance(25 * 60);
+    expect(await say('e1', 'deposit nahi hua')).toBe('requested');
+    expect(where('e1')).toEqual(['Support']);
+  });
+
+  it('a human reply from weeks ago does not make the chat an existing conversation', async () => {
+    build();
+    t.humanWroteEarlier('e2', new Date(now.getTime() - 20 * 24 * 60 * 60_000));
+    expect(await say('e2', 'withdrawal nahi aaya')).toBe('requested');
+    expect(where('e2')).toEqual(['Support']);
+  });
+
+  it('old messages replayed after a restart (stale) and messages while the bot is OFF file nothing', async () => {
+    build({ staleSeconds: 300 });
+    expect(await app.onMessage(t.inbound('s1', 'deposit nahi hua', [], new Date(now.getTime() - 10 * 60_000)))).toBe('stale');
+    await app.onMessage(t.inbound(ADMIN, '/botoff', [], now));
+    expect(await say('s2', 'deposit nahi hua')).toBe('bot_off');
+    expect(t.filedCalls).toHaveLength(0);
+  });
+
+  it('a chat the history check could not verify is left alone this time', async () => {
+    build();
+    t.failHistoryChecks = 1;
+    expect(await say('u1', 'deposit nahi hua')).toBe('conversation_unverified');
+    expect(t.filedCalls).toHaveLength(0);
+  });
+});
+
+describe('6. the folder edits themselves', () => {
+  it('off when no folders are configured; a failed edit is only logged and the next message files the chat', async () => {
+    build({ folders: undefined });
     expect(await say('x2', 'football add karo')).toBe('not_an_issue');
     expect(t.filedCalls).toHaveLength(0);
     expect(app.filing.enabled).toBe(false);
@@ -112,14 +188,17 @@ describe('filing customer chats', () => {
     t.failFolderEdits = 1;
     expect(await say('x3', 'deposit nahi hua')).toBe('requested'); // the request still goes out
     expect(where('x3')).toEqual([]);
-    expect(await app.filing.file('x3', 'deposit')).toBe('support'); // the next attempt works
+    expect(await say('x3', 'ye lo 9810822372')).toBe('already_requested'); // inside the case: filed now
+    expect(where('x3')).toEqual(['Support']);
   });
 
   it('/status reports it', async () => {
     build();
     await say('s1', 'football add karo');
-    await app.onMessage(t.inbound(ADMIN, '/status', [], NOW));
+    await humanReplies('s1');
+    await app.onMessage(t.inbound(ADMIN, '/status', [], now));
     expect(t.sent.at(-1)?.text).toMatch(/Folders: 1 chat filed into Support \/ Match issues since start/);
+    expect(t.sent.at(-1)?.text).toMatch(/Folders: 1 chat taken out of Support \/ Match issues after a human reply/);
   });
 });
 
