@@ -138,12 +138,15 @@ export class EvidenceRequestWorkflow {
       .filter(Boolean);
     const verdict = await classifyIssue(body, this.o.llm, clog, { history });
     clog.debug({ category: verdict.category, source: verdict.source }, 'issue classified');
+    // The model took its time: a human may have answered meanwhile. Then the chat is theirs — not filed, not answered.
+    if (await this.humanSteppedIn(msg.userId, now)) return 'human';
     await this.o.onClassified?.({ chatId: msg.chatId, userId: msg.userId, category: verdict.category }).catch((err) => clog.warn({ err }, 'classification listener failed'));
     if (!verdict.type) return 'not_an_issue';
 
     // Last looks: a human who read the message answers it; the switch once more; then the guarded send.
     if (await this.seenByHuman(msg.chatId, msg.messageId, clog)) return 'seen_by_human';
     if (!(await this.o.botSwitch.isOnNow())) return 'bot_off';
+    if (await this.humanSteppedIn(msg.userId, now)) return 'human';
     // A withdrawal complaint that already carries its screenshot (or its id, with a panel to ask):
     // the first message of the case is the next step itself, not a request for what was just sent.
     const shown = verdict.type === 'withdrawal' ? await this.withdrawalStatusOf(msg, body, clog) : undefined;
@@ -221,6 +224,7 @@ export class EvidenceRequestWorkflow {
     }
     if (await this.seenByHuman(msg.chatId, msg.messageId, log)) return 'seen_by_human';
     if (!(await this.o.botSwitch.isOnNow())) return 'bot_off';
+    if (await this.humanSteppedIn(msg.userId, now)) return 'human'; // the screenshot took time to read; a human may have answered
     // The stage is taken before the send, so a second screenshot arriving meanwhile cannot say it twice.
     await store.requests.setStage(request.id, step.stage);
     try {
@@ -283,6 +287,12 @@ export class EvidenceRequestWorkflow {
   private takeoverIsStale(until: Date, now: Date): boolean {
     const hours = this.o.takeoverHours ?? 24;
     return hours > 0 && until.getTime() > now.getTime() + hours * 3_600_000;
+  }
+
+  /** Re-read after a slow step: did a human write in this chat while the agent was working on the message? */
+  private async humanSteppedIn(userId: string, now: Date): Promise<boolean> {
+    const user = await this.o.store.users.get(userId);
+    return !!user?.humanTakeoverUntil && user.humanTakeoverUntil > now && !this.takeoverIsStale(user.humanTakeoverUntil, now);
   }
 
   /** The account itself wrote in a customer chat: a human is handling it. The agent stays out for `takeoverHours` from this message. */

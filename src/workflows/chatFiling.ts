@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { IssueCategory } from '../nlu/issueType.js';
 import type { Transport } from '../telegram/transport.js';
+import { FolderEdits } from './folderEdits.js';
 
 export type FolderKind = 'support' | 'match' | 'deposit' | 'withdrawal';
 export type FilingOutcome = FolderKind | 'none' | 'unchanged' | 'failed' | 'disabled';
@@ -12,6 +13,8 @@ export interface ChatFilingOptions {
   /** The RAW transport: filing edits the account's own folders, never a chat. */
   transport: Pick<Transport, 'addChatToFolder'>;
   titles?: FolderTitles;
+  /** Shared with the human-reply removal, so a removal always runs after the filing it follows. */
+  edits?: FolderEdits;
   log: Logger;
 }
 
@@ -37,13 +40,15 @@ export function folderFor(category: IssueCategory): FolderKind | 'none' {
  * time; a failure is logged and swallowed — filing must never break anything else.
  */
 export class ChatFiling {
-  private queue: Promise<unknown> = Promise.resolve();
+  private readonly edits: FolderEdits;
   /** Where each chat was last put by this process, so a case's every message costs one folder read, not one each. */
   private readonly placed = new Map<string, string>();
   /** Chats filed since start (for /status). */
   filed = 0;
 
-  constructor(private readonly o: ChatFilingOptions) {}
+  constructor(private readonly o: ChatFilingOptions) {
+    this.edits = o.edits ?? new FolderEdits();
+  }
 
   get enabled(): boolean {
     return !!this.o.titles && typeof this.o.transport.addChatToFolder === 'function';
@@ -60,7 +65,13 @@ export class ChatFiling {
     if (kind === 'none') return Promise.resolve('none');
     const title = this.o.titles![kind];
     if (this.placed.get(chatId) === title) return Promise.resolve('unchanged');
-    const run = this.queue.then(async (): Promise<FilingOutcome> => {
+    return this.edits.run(async (): Promise<FilingOutcome> => {
+      // Decided inside the queue: a human may have replied while this waited (forget() ran) —
+      // then the chat is theirs and is not filed.
+      if (this.handedOver.has(chatId)) {
+        this.handedOver.delete(chatId);
+        return 'unchanged';
+      }
       try {
         await this.o.transport.addChatToFolder!(title, chatId);
         this.placed.set(chatId, title);
@@ -72,12 +83,16 @@ export class ChatFiling {
         return 'failed';
       }
     });
-    this.queue = run.catch(() => undefined);
-    return run;
   }
 
-  /** A human replied (the chat left the folders): the next issue files it again. */
+  /** Chats a human replied in while a filing of theirs was still queued: that filing is dropped. */
+  private readonly handedOver = new Set<string>();
+
+  /** A human replied (the chat left the folders): a filing still waiting is dropped, the next issue files it again. */
   forget(chatId: string): void {
     this.placed.delete(chatId);
+    this.handedOver.add(chatId);
+    // Only a filing already queued is dropped; the flag never outlives the queue.
+    void this.edits.run(async () => void this.handedOver.delete(chatId));
   }
 }

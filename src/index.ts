@@ -86,7 +86,10 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       staleSeconds: env.STALE_MESSAGE_SECONDS,
       reopenHours: env.CASE_REOPEN_HOURS,
       takeoverHours: env.HUMAN_TAKEOVER_HOURS,
-      humanReplyFolders: env.HUMAN_REPLY_FOLDERS.split(',').map((s) => s.trim()).filter(Boolean),
+      // A human's reply empties the chat out of every folder the team uses — whether or not the agent files chats itself.
+      humanReplyFolders: env.HUMAN_REPLY_FOLDERS.trim()
+        ? env.HUMAN_REPLY_FOLDERS.split(',').map((s) => s.trim()).filter(Boolean)
+        : [...new Set([env.SUPPORT_FOLDER, env.MATCH_ISSUES_FOLDER, env.DEPOSIT_FOLDER, env.WITHDRAWAL_FOLDER].filter((s): s is string => !!s))],
       chatFolders: env.CHAT_FOLDERS_ENABLED
         ? { support: env.SUPPORT_FOLDER, match: env.MATCH_ISSUES_FOLDER, deposit: env.DEPOSIT_FOLDER ?? env.SUPPORT_FOLDER, withdrawal: env.WITHDRAWAL_FOLDER ?? env.SUPPORT_FOLDER }
         : undefined,

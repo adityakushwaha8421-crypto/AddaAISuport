@@ -1,5 +1,6 @@
 import type { Logger } from 'pino';
 import type { Transport } from '../telegram/transport.js';
+import { FolderEdits } from './folderEdits.js';
 
 export type FolderOutcome = 'removed' | 'unchanged' | 'failed' | 'disabled';
 
@@ -8,6 +9,8 @@ export interface HumanReplyFoldersOptions {
   transport: Pick<Transport, 'removeChatFromFolders'>;
   /** Folder titles a chat leaves once a human has replied in it. Empty: feature off. */
   titles: string[];
+  /** Shared with the filing, so this removal runs after any filing of the chat still in flight. */
+  edits?: FolderEdits;
   log: Logger;
 }
 
@@ -16,14 +19,16 @@ export interface HumanReplyFoldersOptions {
  * waiting. Once a human has replied in a chat from the account, that chat is dealt with: it is taken
  * out of those folders automatically. Nothing is said to the customer; folder edits are one at a
  * time (Telegram rewrites the whole folder), and a failure is logged and swallowed — housekeeping
- * must never break anything else.
+ * must never break anything else. It runs whether the bot is ON or OFF.
  */
 export class HumanReplyFolders {
-  private queue: Promise<unknown> = Promise.resolve();
+  private readonly edits: FolderEdits;
   /** Chats taken out of a folder since start (for /status). */
   removed = 0;
 
-  constructor(private readonly o: HumanReplyFoldersOptions) {}
+  constructor(private readonly o: HumanReplyFoldersOptions) {
+    this.edits = o.edits ?? new FolderEdits();
+  }
 
   get enabled(): boolean {
     return this.o.titles.length > 0 && typeof this.o.transport.removeChatFromFolders === 'function';
@@ -32,7 +37,7 @@ export class HumanReplyFolders {
   /** A human wrote in this customer chat from the account: the chat leaves the folders. */
   onHumanReply(chatId: string): Promise<FolderOutcome> {
     if (!this.enabled) return Promise.resolve('disabled');
-    const run = this.queue.then(async (): Promise<FolderOutcome> => {
+    return this.edits.run(async (): Promise<FolderOutcome> => {
       try {
         const left = await this.o.transport.removeChatFromFolders!(chatId, this.o.titles);
         if (!left.length) return 'unchanged';
@@ -44,7 +49,5 @@ export class HumanReplyFolders {
         return 'failed';
       }
     });
-    this.queue = run.catch(() => undefined);
-    return run;
   }
 }

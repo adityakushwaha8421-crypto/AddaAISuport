@@ -80,8 +80,19 @@ export class FakeTransport implements Transport, ReadStateApi {
   readonly folders = new Map<string, Set<string>>();
   readonly folderCalls: Array<{ chatId: string; titles: string[] }> = [];
   failFolderEdits = 0;
+  /** Telegram answering slowly: every folder edit waits here (after its "read") until released. */
+  private folderGate?: Promise<void>;
+  holdFolderEdits(): () => void {
+    let release!: () => void;
+    this.folderGate = new Promise<void>((r) => (release = r));
+    return () => {
+      this.folderGate = undefined;
+      release();
+    };
+  }
   async removeChatFromFolders(chatId: string, titles: string[]) {
     this.folderCalls.push({ chatId, titles });
+    if (this.folderGate) await this.folderGate;
     if (this.failFolderEdits > 0) {
       this.failFolderEdits--;
       throw new Error('FLOOD_WAIT_5');
@@ -102,6 +113,7 @@ export class FakeTransport implements Transport, ReadStateApi {
   readonly filedCalls: Array<{ title: string; chatId: string }> = [];
   async addChatToFolder(title: string, chatId: string) {
     this.filedCalls.push({ title, chatId });
+    if (this.folderGate) await this.folderGate;
     if (this.failFolderEdits > 0) {
       this.failFolderEdits--;
       throw new Error('FLOOD_WAIT_5');

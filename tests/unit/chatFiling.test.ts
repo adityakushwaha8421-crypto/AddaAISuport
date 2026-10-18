@@ -114,6 +114,44 @@ describe('3. a human reply takes the chat out and hands the case over', () => {
     expect(where('d1')).toEqual([]);
     expect(customerSends(t)).toHaveLength(1);
   });
+
+  it('a human reply while the filing is still in flight (Telegram slow): the chat still ends up out of the folder, and nothing is sent', async () => {
+    build();
+    const release = t.holdFolderEdits();
+    const customer = say('d3', 'deposit nahi hua'); // the filing has read the folder and waits to write it
+    await new Promise((r) => setTimeout(r, 5));
+    expect(t.filedCalls).toEqual([{ title: 'Support', chatId: 'd3' }]);
+    const human = humanReplies('d3'); // lands before the write: the removal must still see the filing
+    release();
+    expect(await customer).toBe('human');
+    await human;
+    expect(where('d3')).toEqual([]);
+    expect(customerSends(t)).toHaveLength(0);
+    expect(await store.requests.listOpen('d3')).toHaveLength(0);
+  });
+
+  it('a human reply while the model is still reading the message: the chat is not filed and not answered', async () => {
+    let answer!: () => void;
+    const gate = new Promise<void>((r) => (answer = r));
+    build({ llm: new ScriptedLlm().on('issue_type', async () => (await gate, { issue: 'other' })) });
+    const customer = say('d4', 'otp nahi aaya');
+    await new Promise((r) => setTimeout(r, 5));
+    await humanReplies('d4');
+    answer();
+    expect(await customer).toBe('human');
+    expect(t.filedCalls).toHaveLength(0);
+    expect(where('d4')).toEqual([]);
+    expect(customerSends(t)).toHaveLength(0);
+  });
+
+  it('the folder empties even when the takeover could not be recorded (store down)', async () => {
+    build();
+    await say('d5', 'deposit nahi hua');
+    expect(where('d5')).toEqual(['Support']);
+    vi.spyOn(store.users, 'setHumanTakeover').mockRejectedValueOnce(new Error('db down'));
+    await humanReplies('d5');
+    expect(where('d5')).toEqual([]);
+  });
 });
 
 describe('4. the same customer later raises an issue again: filed again', () => {

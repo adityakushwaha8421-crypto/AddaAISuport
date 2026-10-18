@@ -22,10 +22,14 @@ app.ts ─ onMessage:  admin command? → control/adminCommands.ts (replies thro
                               workflows/chatFiling.ts (match → MATCH_ISSUES_FOLDER, deposit/withdrawal → their
                               folders, chitchat → nowhere, everything else → SUPPORT_FOLDER; raw transport
                               addChatToFolder; placement remembered per chat until a human reply)
-        ─ onOwnOutgoing → evidenceRequest.onOwnOutgoing (human takeover for HUMAN_TAKEOVER_HOURS; the chat's open
-                          requests become 'handed_over', so the customer's next issue is a new case)
-                        → humanReplyFolders.onHumanReply (the chat leaves the HUMAN_REPLY_FOLDERS
-                          folders via the RAW transport's removeChatFromFolders; ON or OFF)
+        ─ onOwnOutgoing → chatFiling.forget (a filing of this chat still queued is dropped)
+                        → humanReplyFolders.onHumanReply (the chat leaves the HUMAN_REPLY_FOLDERS folders via
+                          the RAW transport's removeChatFromFolders; ON or OFF; on the same workflows/folderEdits.ts
+                          queue as the filing, so it always runs after a filing in flight)
+                        → evidenceRequest.onOwnOutgoing (human takeover for HUMAN_TAKEOVER_HOURS; the chat's open
+                          requests become 'handed_over', so the customer's next issue is a new case; a failure here
+                          never stops the folder removal). evidenceRequest re-reads the takeover after the model
+                          call and before every send, so a human who answered meanwhile wins.
         ─ onExportMessage → workflows/paymentConfirmed.ts
         ─ onSupportMessage / onExportForward: log only.
 
@@ -70,7 +74,7 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 | `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `withdrawal_pending`, `statement_request`, `payment_confirmed`, `withdrawal_reversed`, `greeting`} |
 | `nlu/moneyDirection.ts`, `nlu/normalize.ts`, `nlu/issueType.ts` | direction-of-money scorer (Hinglish/Hindi/English cues), text normalisation + language detection, scorer-then-model classification |
 | `workflows/evidenceRequest.ts`, `workflows/paymentConfirmed.ts` | the two customer-facing workflows |
-| `workflows/chatFiling.ts`, `workflows/humanReplyFolders.ts`, `telegram/user/folders.ts` | a classified message files the chat into the team's folders; a human's reply takes it out (pure dialog-filter helpers; folder edits one at a time; failures logged) |
+| `workflows/chatFiling.ts`, `workflows/humanReplyFolders.ts`, `workflows/folderEdits.ts`, `telegram/user/folders.ts` | a classified message files the chat into the team's folders; a human's reply takes it out (pure dialog-filter helpers; filing and removal share one queue so edits never overwrite each other; failures logged) |
 | `response/requests.ts`, `response/html.ts` | the request and solved-note wording in three languages; HTML escaping |
 | `control/guardedTransport.ts` | wraps the transport: refuses customer sends/forwards while disabled or OFF; team chats pass |
 | `storage/*` | `users`, `messages`, `evidence_requests`, `settings` repos over memory or Postgres; append-only migrations (old tables remain, unused) |

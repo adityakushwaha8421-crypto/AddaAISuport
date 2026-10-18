@@ -14,6 +14,7 @@ import type { Store } from './storage/types.js';
 import type { ReadStateApi, SupportGroupMessage, Transport } from './telegram/transport.js';
 import { EvidenceRequestWorkflow, type RequestOutcome } from './workflows/evidenceRequest.js';
 import { ChatFiling, type FolderTitles } from './workflows/chatFiling.js';
+import { FolderEdits } from './workflows/folderEdits.js';
 import { HumanReplyFolders } from './workflows/humanReplyFolders.js';
 import { PaymentConfirmedWorkflow } from './workflows/paymentConfirmed.js';
 
@@ -98,7 +99,9 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     internalChats: [cfg.supportChatId, cfg.exportChatId],
   });
   // Folder housekeeping edits the account's own folders, never a chat: the raw transport.
-  const filing = new ChatFiling({ transport: c.transport, titles: cfg.chatFolders, log: c.log.child({ mod: 'folders' }) });
+  // One queue for filing and removal: a human's reply must always see the filing it follows.
+  const folderEdits = new FolderEdits();
+  const filing = new ChatFiling({ transport: c.transport, titles: cfg.chatFolders, edits: folderEdits, log: c.log.child({ mod: 'folders' }) });
   const requests = new EvidenceRequestWorkflow({
     store: c.store, transport, botSwitch, llm: c.llm, readState: c.readState, log: c.log.child({ mod: 'evidence-request' }), clock: c.clock,
     staleSeconds: cfg.staleSeconds, reopenHours: cfg.reopenHours, takeoverHours: cfg.takeoverHours,
@@ -108,7 +111,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
   const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, directory: c.transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
   // A human's reply takes the chat out of every folder in use (or the explicitly configured list).
   const removalTitles = cfg.humanReplyFolders?.length ? cfg.humanReplyFolders : filing.folders;
-  const folders = new HumanReplyFolders({ transport: c.transport, titles: removalTitles, log: c.log.child({ mod: 'folders' }) });
+  const folders = new HumanReplyFolders({ transport: c.transport, titles: removalTitles, edits: folderEdits, log: c.log.child({ mod: 'folders' }) });
   // Admin replies ("✅ Bot is ON") go through the raw transport: they must work while OFF, and admins are not customers.
   const adminCommands = new AdminCommands({ admins: cfg.adminIds ?? [], botSwitch, transport: c.transport, log: c.log.child({ mod: 'admin-commands' }), onRestart: cfg.onRestart, status: () => status() });
   const otherCopy = new OtherCopyDetector();
@@ -190,9 +193,15 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       if (otherCopy.note(ev.chatId, ev.text, now())) {
         c.log.warn({ chat: ev.chatId, message: ev.messageId, sightings24h: otherCopy.recent(now(), 24).length }, 'ANOTHER COPY OF THE OLD BOT replied in this chat (old wording, not sent by this process)');
       }
-      await requests.onOwnOutgoing(ev);
+      // Three independent consequences; one failing must not stop the others (the folder must empty even if the store is down).
       filing.forget(ev.chatId);
-      await folders.onHumanReply(ev.chatId);
+      const removal = folders.onHumanReply(ev.chatId);
+      try {
+        await requests.onOwnOutgoing(ev);
+      } catch (err) {
+        c.log.error({ err, chat: ev.chatId }, 'a human replied, but the takeover could not be recorded');
+      }
+      await removal;
     },
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);

@@ -136,7 +136,11 @@ The folders hold exactly the chats waiting for the team.
 2. **New and active issues are filed.** The first message of a case files the chat, and every
    later message inside the open case keeps it there (one folder edit, not one per message).
 3. **A human reply takes the chat out** of every folder and **hands the case over**: the agent's
-   open case is closed as the human's, and the agent stays out for `HUMAN_TAKEOVER_HOURS`.
+   open case is closed as the human's, and the agent stays out for `HUMAN_TAKEOVER_HOURS`. This
+   holds whenever the reply lands — while the agent is still filing the chat (folder edits run on one
+   queue, so the removal always follows the filing), while the model is still reading the message
+   (the agent re-checks for a human before filing and before every send), or while the database is
+   down (the folder is emptied first, the hand-over recorded separately).
 4. **The same customer later raises an issue again** — after the takeover has passed — and it is
    a new case: classified afresh, filed again (in its own folder), with its own request.
 5. **Existing conversations are never mixed with new cases.** A chat where a human wrote within
@@ -153,7 +157,9 @@ The team files waiting customer chats into Telegram chat folders on the account 
 **Support** and **Match issues**). Once a human replies in a customer chat from the account, the
 agent takes that chat out of those folders automatically, right after the reply is sent: it is dealt
 with. The customer is never told, nothing else changes, and a failed folder edit is only logged.
-By default every configured folder is covered; `HUMAN_REPLY_FOLDERS` (comma-separated titles) narrows it.
+By default every folder named in `.env` is covered (`SUPPORT_FOLDER`, `MATCH_ISSUES_FOLDER`,
+`DEPOSIT_FOLDER`, `WITHDRAWAL_FOLDER`), even with `CHAT_FOLDERS_ENABLED=false`; `HUMAN_REPLY_FOLDERS`
+(comma-separated titles) narrows it.
 This is account housekeeping, not a message, so it also runs while the bot is `/botoff`. Only ordinary
 folders are edited (shared folder links are left alone); a folder emptied this way is deleted, because
 Telegram keeps no empty folder.
