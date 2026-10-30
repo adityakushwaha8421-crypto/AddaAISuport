@@ -19,7 +19,8 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    `tests/helpers/issuePhrases.ts`; live accuracy run: `RUN_LLM_EVALS=1 npm test -- tests/evals`. After that it is
    silent in that case: no acknowledgements, reminders, status updates or follow-ups, whatever the
    customer writes or sends. The human team handles everything from there.
-2. **One solved note per confirmed payment.** When the export bot sends `✅ PAYMENT CONFIRMED`
+2. **One solved note per confirmed payment.** When an export bot (`EXPORT_BOT_ID`, one or more bots
+   by id or @username, e.g. `@Chatexportfa_bot` and `@Addanative_bot`) sends `✅ PAYMENT CONFIRMED`
    naming a `User ID`, exactly that customer is told once, in their language, by their Telegram
    name and with the confirmed amount from the confirmation:
 
@@ -46,7 +47,7 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    Nobody typed it, several customers match, or the name cannot be confirmed → nobody is messaged,
    and the log says why. A User ID always wins over the Mobile line.
 
-   **Withdrawal reversed.** When the export bot sends `🔄 WITHDRAWAL REVERSED` (case number,
+   **Withdrawal reversed.** When an export bot sends `🔄 WITHDRAWAL REVERSED` (case number,
    customer, `User ID`, amount), exactly that customer is told once per case, in their language:
 
    > 🎉 Withdrawal Issue Resolved!
@@ -171,7 +172,7 @@ Telegram keeps no empty folder.
    `evidence_request`, `withdrawal_pending`, `statement_request`, `payment_confirmed`,
    `withdrawal_reversed` and `greeting`. Every automatic code path sends through the guarded
    transport (`app.transport`), which refuses any other send or forward to a chat that is not the
-   support group or the export bot. Nothing added later can message a customer until it is listed there.
+   support group or an export bot. Nothing added later can message a customer until it is listed there.
 2. **Kill switch (runtime).** `/botoff` sets `bot_enabled = false` in the store (shared by every
    process) and mirrors it to `BOT_STATE_FILE` (`data/bot-state.json`) so it survives a full
    restart even with `STORE=memory`, a `/restart`, and any reconnect. Both workflows check it at

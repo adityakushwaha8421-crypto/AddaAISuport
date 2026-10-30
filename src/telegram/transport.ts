@@ -25,8 +25,8 @@ export interface TransportHandlers {
   onOwnOutgoing?(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
   /** The account owner typed in Saved Messages (a chat with themselves): admin commands live there. */
   onAdminCommand?(ev: { chatId: string; messageId: number; fromUserId: string; text?: string }): Promise<void>;
-  /** The export bot wrote to us (e.g. a payment confirmation). */
-  onExportMessage?(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
+  /** An export bot wrote to us (e.g. a payment confirmation). `chatId`: which bot. */
+  onExportMessage?(msg: { chatId?: string; messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
 }
 
 /**

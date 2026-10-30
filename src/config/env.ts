@@ -51,6 +51,7 @@ const envSchema = z.object({
   ADMIN_TELEGRAM_IDS: optionalString,
   /** Chats the transport tells apart from customer chats (their messages are received, never treated as a customer's). */
   SUPPORT_GROUP_CHAT_ID: optionalString,
+  /** The export bot(s) whose PAYMENT CONFIRMED / WITHDRAWAL REVERSED messages are acted on: Telegram user ids or @usernames, comma-separated (e.g. `8869616760,@Addanative_bot`). */
   EXPORT_BOT_ID: optionalString,
   /** Outbound Telegram messages per second (account-wide) and per chat. */
   TELEGRAM_SEND_RATE: z.coerce.number().positive().default(20),

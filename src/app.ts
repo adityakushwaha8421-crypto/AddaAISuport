@@ -27,7 +27,9 @@ export interface AppConfig {
   botStateFile?: string;
   /** Team chats the transport tells apart from customer chats. */
   supportChatId?: string;
+  /** The export bots' chat ids (internal chats for the send guard). */
   exportChatId?: string;
+  exportChatIds?: string[];
   /** See the matching env settings. */
   staleSeconds?: number;
   reopenHours?: number;
@@ -80,7 +82,7 @@ export interface App {
   /** A human wrote from the account in a customer chat: the chat is theirs for HUMAN_TAKEOVER_HOURS, and it leaves the team's folders. */
   onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
   /** The export bot wrote: a valid PAYMENT CONFIRMED with a User ID tells that customer once. */
-  onExportMessage(msg: { messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
+  onExportMessage(msg: { chatId?: string; messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
 }
 
 /**
@@ -96,7 +98,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
   c.log.info({ customerMessaging: CUSTOMER_MESSAGING_ENABLED, allowed: [...ENABLED_CUSTOMER_MESSAGES] }, 'customer messages allowed: only these kinds');
   const transport = guardTransport(c.transport, botSwitch, c.log.child({ mod: 'send-guard' }), {
     customerMessaging: CUSTOMER_MESSAGING_ENABLED,
-    internalChats: [cfg.supportChatId, cfg.exportChatId],
+    internalChats: [cfg.supportChatId, cfg.exportChatId, ...(cfg.exportChatIds ?? [])],
   });
   // Folder housekeeping edits the account's own folders, never a chat: the raw transport.
   // One queue for filing and removal: a human's reply must always see the filing it follows.
@@ -206,6 +208,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);
       if (outcome === 'solved') notesSent++;
+      c.log.info({ exportBot: msg.chatId, message: msg.messageId, outcome }, 'export bot message handled');
       c.metrics?.outbound.inc({ kind: 'payment_confirmed', outcome });
     },
   };

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { silentLogger } from '../../src/observability/logger.js';
 import { MemorySessionStore } from '../../src/telegram/user/sessionStore.js';
-import { UserTransport } from '../../src/telegram/user/userTransport.js';
+import { parseExportBots, UserTransport } from '../../src/telegram/user/userTransport.js';
 
 /**
  * Saved Messages (the account's chat with itself) is the owner's admin console. Telegram delivers
@@ -12,7 +12,7 @@ function transport() {
   (t as unknown as { selfId: string }).selfId = '8412466614';
   return t as unknown as { onEvent(ev: unknown, handlers: unknown): Promise<void>; sentByUs: Map<string, Set<number>> };
 }
-const event = (chatId: string, id: number, message: string, out: boolean) => ({ isPrivate: true, message: { chatId: { toString: () => chatId }, id, message, out, senderId: { toString: () => chatId } } });
+const event = (chatId: string, id: number, message: string, out: boolean) => ({ isPrivate: true, message: { chatId: { toString: () => chatId }, id, message, out, senderId: { toString: () => chatId }, getSender: async () => undefined } });
 
 describe('Saved Messages routing', () => {
   it('a message in the chat with ourselves goes to onAdminCommand, out flag or not', async () => {
@@ -50,9 +50,9 @@ describe('Saved Messages routing', () => {
 
 describe('export bot chat routing', () => {
   const t2 = () => {
-    const t = new UserTransport({ apiId: 1, apiHash: 'x', sessions: new MemorySessionStore(), log: silentLogger, ownSendGraceMs: 1, exportChatId: '8869616760' });
+    const t = new UserTransport({ apiId: 1, apiHash: 'x', sessions: new MemorySessionStore(), log: silentLogger, ownSendGraceMs: 1, exportBots: ['8869616760', '@Addanative_bot'] });
     (t as unknown as { selfId: string }).selfId = '8412466614';
-    return t as unknown as { onEvent(ev: unknown, handlers: unknown): Promise<void> };
+    return t as unknown as { onEvent(ev: unknown, handlers: unknown): Promise<void>; resolveExportBot(client: unknown): Promise<void> };
   };
   it("the bot's message goes to onExportMessage; the account's own message there is nothing (not a customer, not a takeover)", async () => {
     const t = t2();
@@ -62,9 +62,34 @@ describe('export bot chat routing', () => {
     await t.onEvent(event('8869616760', 5, '✅ PAYMENT CONFIRMED\nUser ID: 6135570708', false), { onExportMessage, onOwnOutgoing, onMessage });
     await t.onEvent(event('8869616760', 6, 'forwarded evidence', true), { onExportMessage, onOwnOutgoing, onMessage });
     expect(onExportMessage).toHaveBeenCalledTimes(1);
-    expect(onExportMessage).toHaveBeenCalledWith({ messageId: 5, text: '✅ PAYMENT CONFIRMED\nUser ID: 6135570708', replyToMessageId: undefined });
+    expect(onExportMessage).toHaveBeenCalledWith({ chatId: '8869616760', messageId: 5, text: '✅ PAYMENT CONFIRMED\nUser ID: 6135570708', replyToMessageId: undefined });
     expect(onOwnOutgoing).not.toHaveBeenCalled();
     expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  it('a second export bot given by @username counts once resolved at start; before that, and for any other bot, nothing is an export message', async () => {
+    const t = t2();
+    const onExportMessage = vi.fn(async () => undefined);
+    const onMessage = vi.fn(async () => undefined);
+    const confirmation = '✅ PAYMENT CONFIRMED\nUser ID: 6135570708';
+    // not resolved yet: the username's chat id is unknown, so its message would be screened like any sender's
+    await t.onEvent(event('7000000001', 1, confirmation, false), { onExportMessage, onMessage });
+    expect(onExportMessage).not.toHaveBeenCalled();
+    const client = {
+      getEntity: vi.fn(async (ref: unknown) => (ref === '@Addanative_bot' ? { id: { toString: () => '7000000001' }, username: 'Addanative_bot', bot: true } : { id: { toString: () => String(ref) }, username: 'Chatexportfa_bot', bot: true })),
+      getInputEntity: vi.fn(async (e: unknown) => e),
+    };
+    await t.resolveExportBot(client);
+    expect(client.getEntity).toHaveBeenCalledWith('@Addanative_bot');
+    await t.onEvent(event('7000000001', 2, confirmation, false), { onExportMessage, onMessage });
+    await t.onEvent(event('8869616760', 3, confirmation, false), { onExportMessage, onMessage });
+    await t.onEvent(event('7000000002', 4, confirmation, false), { onExportMessage, onMessage }); // some other bot: not whitelisted
+    expect(onExportMessage.mock.calls.map((c) => (c as unknown as [{ chatId: string }])[0].chatId)).toEqual(['7000000001', '8869616760']);
+  });
+
+  it('EXPORT_BOT_ID takes ids and @usernames, comma-separated, with or without the @', () => {
+    expect(parseExportBots('8869616760, @Addanative_bot,Chatexportfa_bot, 8869616760')).toEqual(['8869616760', '@Addanative_bot', '@Chatexportfa_bot']);
+    expect(parseExportBots(undefined)).toEqual([]);
   });
 });
 

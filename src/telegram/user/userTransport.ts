@@ -24,6 +24,12 @@ export interface SenderFilter {
   ignoreContacts: boolean;
 }
 
+/** `EXPORT_BOT_ID`: Telegram user ids and/or @usernames of the export bots, comma-separated. */
+export function parseExportBots(raw: string | undefined): string[] {
+  const items = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return [...new Set(items.map((s) => (/^\d+$/.test(s) || s.startsWith('@') ? s : `@${s}`)))];
+}
+
 export function parseAllowedUsers(raw: string | undefined): Set<string> | undefined {
   const items = (raw ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   return items.length ? new Set(items.map((s) => (/^\d+$/.test(s) || s.startsWith('@') ? s : `@${s}`))) : undefined;
@@ -49,8 +55,8 @@ export interface UserTransportOptions {
   apiHash: string;
   sessions: SessionStore;
   supportChatId?: string;
-  /** Telegram user id of the export bot the account sends case files to. */
-  exportChatId?: string;
+  /** The export bots whose messages go to onExportMessage: Telegram user ids or @usernames. */
+  exportBots?: string[];
   filter?: SenderFilter;
   log: Logger;
   /** How often to verify the session is still authorised. */
@@ -153,7 +159,8 @@ export class UserTransport implements Transport, ReadStateApi {
   /** Support chat as Telegram reports it on incoming messages ("marked" id, e.g. -5207771735). */
   private supportMarkedId?: string;
   private supportPeer?: Api.TypeInputPeer;
-  private exportPeer?: Api.TypeInputPeer;
+  /** Export bots by chat id (ids known from the config at once, @usernames once resolved at start). */
+  private readonly exportBots = new Map<string, Api.TypeInputPeer | undefined>();
   private running = false;
   private authTimer?: NodeJS.Timeout;
   private watchTimer?: NodeJS.Timeout;
@@ -171,6 +178,7 @@ export class UserTransport implements Transport, ReadStateApi {
   private readonly chatBuckets: KeyedBuckets;
 
   constructor(private readonly opts: UserTransportOptions) {
+    for (const ref of opts.exportBots ?? []) if (/^\d+$/.test(ref)) this.exportBots.set(ref, undefined);
     this.sendBucket = new TokenBucket(opts.sendRate ?? 20, Math.max(5, Math.round((opts.sendRate ?? 20) / 2)));
     this.chatBuckets = new KeyedBuckets(opts.chatSendRate ?? 1, 3);
   }
@@ -275,17 +283,18 @@ export class UserTransport implements Transport, ReadStateApi {
     }
   }
 
-  /** The export bot must already have a chat with this account (open it and press Start once). */
+  /** Every export bot must already have a chat with this account (open it and press Start once). A @username is only known by id once resolved here. */
   private async resolveExportBot(client: TelegramClient): Promise<void> {
-    const id = this.opts.exportChatId;
-    if (!id) return;
-    try {
-      const entity = await client.getEntity(bigInt(id));
-      this.exportPeer = await client.getInputEntity(entity);
-      const name = entity instanceof Api.User ? (entity.username ? `@${entity.username}` : entity.firstName) : id;
-      this.opts.log.info({ exportBot: name }, 'export bot resolved');
-    } catch (err) {
-      this.opts.log.error({ err, exportBotId: id }, 'export bot not found: open the bot on this account and press Start once. Exports will fail until then');
+    for (const ref of this.opts.exportBots ?? []) {
+      try {
+        const entity = await client.getEntity(/^\d+$/.test(ref) ? bigInt(ref) : ref);
+        const id = (entity as Api.User).id.toString();
+        this.exportBots.set(id, await client.getInputEntity(entity));
+        const name = entity instanceof Api.User ? (entity.username ? `@${entity.username}` : entity.firstName) : ref;
+        this.opts.log.info({ exportBot: name, id }, 'export bot resolved');
+      } catch (err) {
+        this.opts.log.error({ err, exportBot: ref }, 'export bot not found: open the bot on this account and press Start once. Its confirmations are not recognised until then');
+      }
     }
   }
 
@@ -328,9 +337,9 @@ export class UserTransport implements Transport, ReadStateApi {
       }
       return;
     }
-    if (this.opts.exportChatId && chatId === this.opts.exportChatId) {
+    if (this.exportBots.has(chatId)) {
       // What comes back is the bot's confirmation; what the account sends there is nobody's business here.
-      if (!m.out && handlers.onExportMessage) await handlers.onExportMessage({ messageId: m.id, text: m.message, replyToMessageId: m.replyToMsgId });
+      if (!m.out && handlers.onExportMessage) await handlers.onExportMessage({ chatId, messageId: m.id, text: m.message, replyToMessageId: m.replyToMsgId });
       return;
     }
     if (!ev.isPrivate) return;
@@ -379,7 +388,8 @@ export class UserTransport implements Transport, ReadStateApi {
 
   private peer(chatId: string) {
     if (this.supportPeer && chatId === this.opts.supportChatId) return this.supportPeer;
-    if (this.exportPeer && chatId === this.opts.exportChatId) return this.exportPeer;
+    const exportPeer = this.exportBots.get(chatId);
+    if (exportPeer) return exportPeer;
     return bigInt(chatId);
   }
 

@@ -68,7 +68,7 @@ re-reads `.env`, boots a new one under the same instance lock and only then conf
 |---|---|
 | `config/env.ts` | zod-validated environment; refuses secrets in path settings; `secretValues()` feeds the scrubber |
 | `telegram/transport.ts` | the `Transport` interface (send text, recent outgoing ids, health) and `ReadStateApi` |
-| `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bot / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
+| `telegram/user/*` | GramJS implementation (receive, screen senders, route Saved Messages / support group / export bots (EXPORT_BOT_ID: ids or @usernames, resolved at start) / own sends, send with rate limits, read state), session stores (string / encrypted file), login + session + check scripts |
 | `control/botSwitch.ts` | `bot_enabled` in the store's `settings` + `BOT_STATE_FILE` mirror; `isOnNow()` reads fresh; `restore()` at boot |
 | `control/adminCommands.ts` | `/boton` `/botoff` `/restart` for `ADMIN_TELEGRAM_IDS` and the owner in Saved Messages |
 | `control/customerMessaging.ts` | `CUSTOMER_MESSAGING_ENABLED = false` + allowlist {`evidence_request`, `withdrawal_pending`, `statement_request`, `payment_confirmed`, `withdrawal_reversed`, `greeting`} |

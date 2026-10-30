@@ -17,7 +17,7 @@ import { acquireInstanceLock } from './util/instanceLock.js';
 import { scrubber } from './security/scrubber.js';
 import { createStore } from './storage/index.js';
 import { sessionStoreFromEnv } from './telegram/user/sessionStore.js';
-import { parseAllowedUsers, UserTransport } from './telegram/user/userTransport.js';
+import { parseAllowedUsers, parseExportBots, UserTransport } from './telegram/user/userTransport.js';
 
 function createTransport(env: Env, log: Logger): UserTransport {
   return new UserTransport({
@@ -25,7 +25,7 @@ function createTransport(env: Env, log: Logger): UserTransport {
     apiHash: env.TELEGRAM_API_HASH!,
     sessions: sessionStoreFromEnv(env, () => log.warn('the Telegram session changed at runtime; if login fails after a restart, run `npm run telegram:session` again')),
     supportChatId: env.SUPPORT_GROUP_CHAT_ID,
-    exportChatId: env.EXPORT_BOT_ID,
+    exportBots: parseExportBots(env.EXPORT_BOT_ID),
     filter: { allowed: parseAllowedUsers(env.TELEGRAM_ALLOWED_USERS), ignoreContacts: env.TELEGRAM_IGNORE_CONTACTS },
     sendRate: env.TELEGRAM_SEND_RATE, chatSendRate: env.TELEGRAM_CHAT_SEND_RATE,
     log: log.child({ mod: 'telegram' }),
@@ -71,7 +71,9 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     : new DisabledLlm();
 
   if (!llm.available) log.warn('OPENAI_API_KEY not set: deposit/withdrawal is read by the lexical scorer only');
-  if (!env.EXPORT_BOT_ID) log.warn('EXPORT_BOT_ID not set: PAYMENT CONFIRMED messages cannot be recognised');
+  const exportBots = parseExportBots(env.EXPORT_BOT_ID);
+  if (!exportBots.length) log.warn('EXPORT_BOT_ID not set: PAYMENT CONFIRMED messages cannot be recognised');
+  else log.info({ exportBots }, 'export bots whose confirmations are acted on');
 
   const transport = createTransport(env, log);
   const version = await run('git', ['rev-parse', '--short', 'HEAD'], { cwd: process.cwd() }).then((r) => r.stdout.trim()).catch(() => 'unknown');
@@ -82,7 +84,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
       onRestart: ctx.requestRestart,
       botStateFile: env.BOT_STATE_FILE,
       supportChatId: env.SUPPORT_GROUP_CHAT_ID,
-      exportChatId: env.EXPORT_BOT_ID,
+      exportChatIds: exportBots.filter((b) => /^\d+$/.test(b)),
       staleSeconds: env.STALE_MESSAGE_SECONDS,
       reopenHours: env.CASE_REOPEN_HOURS,
       takeoverHours: env.HUMAN_TAKEOVER_HOURS,
