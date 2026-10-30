@@ -40,7 +40,7 @@ export interface AppConfig {
   chatFolders?: FolderTitles;
   /** Shown by /status. */
   version?: string;
-  transportStats?: () => { reconnects: number; lastUpdateAt: Date };
+  transportStats?: () => { reconnects: number; lastUpdateAt: Date; exportBots?: string[] };
 }
 
 export interface AppComponents {
@@ -132,6 +132,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
       `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}, ${greetingsSent} greeting${greetingsSent === 1 ? '' : 's'}`,
     ];
     if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
+    if (stats?.exportBots) lines.push(stats.exportBots.length ? `Export bots: ${stats.exportBots.join(', ')} (their PAYMENT CONFIRMED / WITHDRAWAL REVERSED are acted on)` : '⚠️ No export bot resolved: confirmations are not recognised');
     if (filing.enabled) lines.push(`Folders: ${filing.filed} chat${filing.filed === 1 ? '' : 's'} filed into ${filing.folders.join(' / ')} since start`);
     if (folders.enabled) lines.push(`Folders: ${folders.removed} chat${folders.removed === 1 ? '' : 's'} taken out of ${removalTitles.join(' / ')} after a human reply`);
     lines.push(seen.length

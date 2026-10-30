@@ -7,7 +7,7 @@ import { assemble, type App } from './app.js';
 import { REPLIES } from './control/adminCommands.js';
 import { Supervisor, type Booted, type BootContext } from './control/supervisor.js';
 import { updateFromGit } from './control/updater.js';
-import { loadEnv, secretValues, type Env } from './config/env.js';
+import { loadEnv, secretValues, type Env, KNOWN_EXPORT_BOTS } from './config/env.js';
 import { DisabledLlm, type LlmClient } from './llm/client.js';
 import { OpenAiLlm } from './llm/openai.js';
 import { startHealthServer, type HealthChecks } from './observability/health.js';
@@ -25,7 +25,7 @@ function createTransport(env: Env, log: Logger): UserTransport {
     apiHash: env.TELEGRAM_API_HASH!,
     sessions: sessionStoreFromEnv(env, () => log.warn('the Telegram session changed at runtime; if login fails after a restart, run `npm run telegram:session` again')),
     supportChatId: env.SUPPORT_GROUP_CHAT_ID,
-    exportBots: parseExportBots(env.EXPORT_BOT_ID),
+    exportBots: parseExportBots(env.EXPORT_BOT_ID, KNOWN_EXPORT_BOTS),
     filter: { allowed: parseAllowedUsers(env.TELEGRAM_ALLOWED_USERS), ignoreContacts: env.TELEGRAM_IGNORE_CONTACTS },
     sendRate: env.TELEGRAM_SEND_RATE, chatSendRate: env.TELEGRAM_CHAT_SEND_RATE,
     log: log.child({ mod: 'telegram' }),
@@ -71,9 +71,8 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
     : new DisabledLlm();
 
   if (!llm.available) log.warn('OPENAI_API_KEY not set: deposit/withdrawal is read by the lexical scorer only');
-  const exportBots = parseExportBots(env.EXPORT_BOT_ID);
-  if (!exportBots.length) log.warn('EXPORT_BOT_ID not set: PAYMENT CONFIRMED messages cannot be recognised');
-  else log.info({ exportBots }, 'export bots whose confirmations are acted on');
+  const exportBots = parseExportBots(env.EXPORT_BOT_ID, KNOWN_EXPORT_BOTS);
+  log.info({ exportBots }, 'export bots whose confirmations are acted on');
 
   const transport = createTransport(env, log);
   const version = await run('git', ['rev-parse', '--short', 'HEAD'], { cwd: process.cwd() }).then((r) => r.stdout.trim()).catch(() => 'unknown');
@@ -96,7 +95,7 @@ async function boot(ctx: BootContext, rootLog: Logger): Promise<Booted> {
         ? { support: env.SUPPORT_FOLDER, match: env.MATCH_ISSUES_FOLDER, deposit: env.DEPOSIT_FOLDER ?? env.SUPPORT_FOLDER, withdrawal: env.WITHDRAWAL_FOLDER ?? env.SUPPORT_FOLDER }
         : undefined,
       version,
-      transportStats: () => ({ reconnects: transport.reconnectCount, lastUpdateAt: transport.lastUpdateAt }),
+      transportStats: () => ({ reconnects: transport.reconnectCount, lastUpdateAt: transport.lastUpdateAt, exportBots: transport.resolvedExportBots }),
     },
   );
   // ON/OFF survives every kind of restart: the store (Postgres) or, for the in-memory store, the

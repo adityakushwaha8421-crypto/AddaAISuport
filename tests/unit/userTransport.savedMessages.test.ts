@@ -78,9 +78,15 @@ describe('export bot chat routing', () => {
     const client = {
       getEntity: vi.fn(async (ref: unknown) => (ref === '@Addanative_bot' ? { id: { toString: () => '7000000001' }, username: 'Addanative_bot', bot: true } : { id: { toString: () => String(ref) }, username: 'Chatexportfa_bot', bot: true })),
       getInputEntity: vi.fn(async (e: unknown) => e),
+      // the old bot has history with the account; the new one has no chat yet
+      getMessages: vi.fn(async (peer: { username: string }) => (peer.username === 'Addanative_bot' ? [] : [{ id: 1 }])),
+      sendMessage: vi.fn(async () => undefined),
     };
     await t.resolveExportBot(client);
     expect(client.getEntity).toHaveBeenCalledWith('@Addanative_bot');
+    // the new bot's chat is started by the agent itself, so it can write to the account; the old one is left alone
+    expect(client.sendMessage.mock.calls).toEqual([[expect.objectContaining({ username: 'Addanative_bot' }), { message: '/start' }]]);
+    expect((t as unknown as { resolvedExportBots: string[] }).resolvedExportBots).toEqual(['8869616760', '@Addanative_bot']); // plain objects here, so the name falls back to the configured reference
     await t.onEvent(event('7000000001', 2, confirmation, false), { onExportMessage, onMessage });
     await t.onEvent(event('8869616760', 3, confirmation, false), { onExportMessage, onMessage });
     await t.onEvent(event('7000000002', 4, confirmation, false), { onExportMessage, onMessage }); // some other bot: not whitelisted
@@ -90,6 +96,8 @@ describe('export bot chat routing', () => {
   it('EXPORT_BOT_ID takes ids and @usernames, comma-separated, with or without the @', () => {
     expect(parseExportBots('8869616760, @Addanative_bot,Chatexportfa_bot, 8869616760')).toEqual(['8869616760', '@Addanative_bot', '@Chatexportfa_bot']);
     expect(parseExportBots(undefined)).toEqual([]);
+    // the team's own bots come built in; .env adds, never has to repeat them
+    expect(parseExportBots('8869616760', ['@Chatexportfa_bot', '@Addanative_bot'])).toEqual(['@Chatexportfa_bot', '@Addanative_bot', '8869616760']);
   });
 });
 

@@ -51,7 +51,7 @@ const envSchema = z.object({
   ADMIN_TELEGRAM_IDS: optionalString,
   /** Chats the transport tells apart from customer chats (their messages are received, never treated as a customer's). */
   SUPPORT_GROUP_CHAT_ID: optionalString,
-  /** The export bot(s) whose PAYMENT CONFIRMED / WITHDRAWAL REVERSED messages are acted on: Telegram user ids or @usernames, comma-separated (e.g. `8869616760,@Addanative_bot`). */
+  /** Further export bot(s) beside KNOWN_EXPORT_BOTS whose PAYMENT CONFIRMED / WITHDRAWAL REVERSED messages are acted on: Telegram user ids or @usernames, comma-separated. */
   EXPORT_BOT_ID: optionalString,
   /** Outbound Telegram messages per second (account-wide) and per chat. */
   TELEGRAM_SEND_RATE: z.coerce.number().positive().default(20),
@@ -157,3 +157,6 @@ export function secretValues(env: Env): string[] {
     (v): v is string => typeof v === 'string' && v.length >= 6,
   );
 }
+
+/** The team's own export bots: always recognised, no .env change needed when the team adds one here. EXPORT_BOT_ID adds more. */
+export const KNOWN_EXPORT_BOTS = ['@Chatexportfa_bot', '@Addanative_bot'] as const;

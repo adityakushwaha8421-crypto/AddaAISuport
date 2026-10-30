@@ -24,9 +24,9 @@ export interface SenderFilter {
   ignoreContacts: boolean;
 }
 
-/** `EXPORT_BOT_ID`: Telegram user ids and/or @usernames of the export bots, comma-separated. */
-export function parseExportBots(raw: string | undefined): string[] {
-  const items = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+/** `EXPORT_BOT_ID`: Telegram user ids and/or @usernames of export bots, comma-separated. `builtin` (the team's own bots) always come first. */
+export function parseExportBots(raw: string | undefined, builtin: readonly string[] = []): string[] {
+  const items = [...builtin, ...(raw ?? '').split(',')].map((s) => s.trim()).filter(Boolean);
   return [...new Set(items.map((s) => (/^\d+$/.test(s) || s.startsWith('@') ? s : `@${s}`)))];
 }
 
@@ -161,6 +161,8 @@ export class UserTransport implements Transport, ReadStateApi {
   private supportPeer?: Api.TypeInputPeer;
   /** Export bots by chat id (ids known from the config at once, @usernames once resolved at start). */
   private readonly exportBots = new Map<string, Api.TypeInputPeer | undefined>();
+  /** The export bots as resolved at start, for /status. */
+  private readonly exportBotNames = new Map<string, string>();
   private running = false;
   private authTimer?: NodeJS.Timeout;
   private watchTimer?: NodeJS.Timeout;
@@ -283,19 +285,35 @@ export class UserTransport implements Transport, ReadStateApi {
     }
   }
 
-  /** Every export bot must already have a chat with this account (open it and press Start once). A @username is only known by id once resolved here. */
+  /**
+   * Every export bot is resolved to its chat id (a @username is only known by id once resolved here).
+   * A bot can only write to an account that has started it: a bot with no chat yet is sent /start,
+   * once, so the team never has to open it by hand.
+   */
   private async resolveExportBot(client: TelegramClient): Promise<void> {
     for (const ref of this.opts.exportBots ?? []) {
       try {
         const entity = await client.getEntity(/^\d+$/.test(ref) ? bigInt(ref) : ref);
         const id = (entity as Api.User).id.toString();
-        this.exportBots.set(id, await client.getInputEntity(entity));
-        const name = entity instanceof Api.User ? (entity.username ? `@${entity.username}` : entity.firstName) : ref;
+        const peer = await client.getInputEntity(entity);
+        this.exportBots.set(id, peer);
+        const name = entity instanceof Api.User ? (entity.username ? `@${entity.username}` : entity.firstName ?? id) : ref;
+        this.exportBotNames.set(id, name);
         this.opts.log.info({ exportBot: name, id }, 'export bot resolved');
+        const history = await client.getMessages(peer, { limit: 1 });
+        if (!history.length) {
+          await client.sendMessage(peer, { message: '/start' });
+          this.opts.log.info({ exportBot: name }, 'export bot chat started (/start sent): it can now write to this account');
+        }
       } catch (err) {
-        this.opts.log.error({ err, exportBot: ref }, 'export bot not found: open the bot on this account and press Start once. Its confirmations are not recognised until then');
+        this.opts.log.error({ err, exportBot: ref }, 'export bot could not be resolved or started: its confirmations are not recognised until it is');
       }
     }
+  }
+
+  /** The export bots whose confirmations are acted on, as resolved at start. */
+  get resolvedExportBots(): string[] {
+    return [...this.exportBotNames.values()];
   }
 
   private markRevoked() {

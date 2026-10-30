@@ -19,8 +19,10 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    `tests/helpers/issuePhrases.ts`; live accuracy run: `RUN_LLM_EVALS=1 npm test -- tests/evals`. After that it is
    silent in that case: no acknowledgements, reminders, status updates or follow-ups, whatever the
    customer writes or sends. The human team handles everything from there.
-2. **One solved note per confirmed payment.** When an export bot (`EXPORT_BOT_ID`, one or more bots
-   by id or @username, e.g. `@Chatexportfa_bot` and `@Addanative_bot`) sends `✅ PAYMENT CONFIRMED`
+2. **One solved note per confirmed payment.** When an export bot sends `✅ PAYMENT CONFIRMED`
+   (the team's `@Chatexportfa_bot` and `@Addanative_bot` are built in; `EXPORT_BOT_ID` adds more by id
+   or @username; a bot the account has no chat with yet is sent `/start` at startup, and `/status`
+   lists the bots in use)
    naming a `User ID`, exactly that customer is told once, in their language, by their Telegram
    name and with the confirmed amount from the confirmation:
 
