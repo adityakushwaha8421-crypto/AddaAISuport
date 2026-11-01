@@ -2,14 +2,18 @@ import { createHash } from 'node:crypto';
 import type { Logger } from 'pino';
 import { BotOffError } from '../control/guardedTransport.js';
 import { escapeHtml } from '../response/html.js';
-import { refundedText, solvedText, type Language } from '../response/requests.js';
+import { forwardedText, refundedText, solvedText, type Language } from '../response/requests.js';
 import { extractMobileNumbers, maskMobile } from '../nlu/mobile.js';
 import { scrubber } from '../security/scrubber.js';
 import type { Store, UserRecord } from '../storage/types.js';
 import type { TelegramUserProfile, Transport } from '../telegram/transport.js';
 
-/** What the export bot reports: a payment the customer made was confirmed (deposit solved), or a stuck withdrawal was reversed (refunded to the wallet). */
-export type ConfirmationEvent = 'payment_confirmed' | 'withdrawal_reversed';
+/**
+ * What the export bot reports: a payment the customer made was confirmed (deposit solved), a stuck
+ * withdrawal was reversed (refunded to the wallet), or a case was opened and the order is being
+ * searched (the customer's issue is with the team now).
+ */
+export type ConfirmationEvent = 'payment_confirmed' | 'withdrawal_reversed' | 'case_searching';
 
 export interface Confirmation {
   event: ConfirmationEvent;
@@ -42,11 +46,16 @@ export function parseReference(text: string): string | undefined {
 }
 
 /**
- * A valid result names PAYMENT CONFIRMED (a deposit) or WITHDRAWAL REVERSED (a withdrawal refunded
- * to the wallet); the customer is taken from an explicit User ID line when there is one.
+ * A valid result names PAYMENT CONFIRMED (a deposit), WITHDRAWAL REVERSED (a withdrawal refunded
+ * to the wallet), or — in its heading line — SEARCHING (a case opened, the order being looked up);
+ * the customer is taken from an explicit User ID line when there is one.
  */
 export function parseConfirmation(text: string): Confirmation | undefined {
-  const event: ConfirmationEvent | undefined = /WITHDRAW\w*\s+REVERSED/i.test(text) ? 'withdrawal_reversed' : /PAYMENT\s+CONFIRMED/i.test(text) ? 'payment_confirmed' : undefined;
+  const heading = text.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  const event: ConfirmationEvent | undefined = /WITHDRAW\w*\s+REVERSED/i.test(text) ? 'withdrawal_reversed'
+    : /PAYMENT\s+CONFIRMED/i.test(text) ? 'payment_confirmed'
+    : /\bSEARCHING\b/i.test(heading) ? 'case_searching'
+    : undefined;
   if (!event) return undefined;
   const userId = /User\s*ID\s*[:=]?\s*(\d{5,20})\b/i.exec(text)?.[1];
   const orderId = parseReference(text);
@@ -108,9 +117,12 @@ export function identityMatches(claimed: Pick<Confirmation, 'customerName' | 'cu
 /** The confirmation's content, ignoring spacing and case: the same confirmation re-sent has the same print. */
 const fingerprint = (text: string) => createHash('sha1').update(text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')).digest('hex').slice(0, 16);
 
-export type ConfirmationOutcome = 'solved' | 'duplicate' | 'ignored' | 'bot_off' | 'user_unverified' | 'user_mismatch' | 'send_failed';
+export type ConfirmationOutcome = 'solved' | 'forwarded' | 'duplicate' | 'ignored' | 'bot_off' | 'user_unverified' | 'user_mismatch' | 'send_failed';
 
 /**
+ * The export bot says "🔎 SEARCHING … Case … User ID: <id>": exactly that customer is told, once per
+ * case, in their language, that their issue is with the team and to wait for the update (the case
+ * stays open). Or:
  * The export bot says "🔄 WITHDRAWAL REVERSED … User ID: <id>": exactly that customer is told, once
  * per case, that the withdrawal issue is solved and the amount is refunded to their wallet. Or:
  * The export bot says "✅ PAYMENT CONFIRMED … User ID: <id>": exactly that customer is told, once
@@ -141,7 +153,7 @@ export class PaymentConfirmedWorkflow {
     const text = msg.text ?? '';
     const parsed = parseConfirmation(text);
     if (!parsed) {
-      log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED or a WITHDRAWAL REVERSED)');
+      log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED, a WITHDRAWAL REVERSED or a SEARCHING)');
       return 'ignored';
     }
     if (!parsed.userId && !parsed.customerUsername && !parsed.mobile) {
@@ -186,14 +198,19 @@ export class PaymentConfirmedWorkflow {
     // Claim the key before sending so two deliveries of the same confirmation cannot both send.
     await store.settings.set(key, { at: now.toISOString(), messageId: msg.messageId });
     // The bot's result decides the note, never the case the customer has open: a confirmed payment
-    // is a deposit solved; a reversed withdrawal is a withdrawal solved, refunded to the wallet.
-    const note = parsed.event === 'withdrawal_reversed' ? refundedText(lang, { name, amount: parsed.amount }) : solvedText(lang, { name, amount: parsed.amount });
+    // is a deposit solved; a reversed withdrawal is a withdrawal solved, refunded to the wallet; a
+    // search just opened means the issue is with the team — nothing is solved yet.
+    const searching = parsed.event === 'case_searching';
+    const note = searching ? forwardedText(lang, { name })
+      : parsed.event === 'withdrawal_reversed' ? refundedText(lang, { name, amount: parsed.amount })
+      : solvedText(lang, { name, amount: parsed.amount });
+    const kind = searching ? 'case_forwarded' : parsed.event;
     try {
-      const sent = await this.o.transport.sendText(chatId, escapeHtml(note), { html: true, kind: parsed.event });
-      await store.messages.insert({ chatId, userId, telegramMessageId: sent.messageId, direction: 'out', text: note, media: [], meta: { kind: parsed.event }, createdAt: now });
-      const closed = await store.requests.markSolved(userId, now);
-      log.info({ userId, event: parsed.event, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, 'export bot result: customer told once');
-      return 'solved';
+      const sent = await this.o.transport.sendText(chatId, escapeHtml(note), { html: true, kind });
+      await store.messages.insert({ chatId, userId, telegramMessageId: sent.messageId, direction: 'out', text: note, media: [], meta: { kind }, createdAt: now });
+      const closed = searching ? 0 : await store.requests.markSolved(userId, now);
+      log.info({ userId, event: parsed.event, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, searching ? 'export bot is searching the case: customer told once that the team has it' : 'export bot result: customer told once');
+      return searching ? 'forwarded' : 'solved';
     } catch (err) {
       await store.settings.set(key, null).catch(() => undefined); // released: a later delivery may try again
       if (err instanceof BotOffError) return 'bot_off';

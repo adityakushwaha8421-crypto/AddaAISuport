@@ -26,7 +26,7 @@ function build() {
 describe('receive-only agent', () => {
   it('ships with customer messaging disabled except the workflow kinds', () => {
     expect(CUSTOMER_MESSAGING_ENABLED).toBe(false);
-    expect([...ENABLED_CUSTOMER_MESSAGES].sort()).toEqual(['evidence_request', 'greeting', 'payment_confirmed', 'statement_request', 'withdrawal_pending', 'withdrawal_reversed']);
+    expect([...ENABLED_CUSTOMER_MESSAGES].sort()).toEqual(['case_forwarded', 'evidence_request', 'greeting', 'payment_confirmed', 'statement_request', 'withdrawal_pending', 'withdrawal_reversed']);
   });
 
   it('stores every customer message and sends ZERO automatic messages for anything that is not a deposit/withdrawal issue (or a bare greeting opening a fresh chat)', async () => {

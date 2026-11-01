@@ -129,7 +129,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     const lines = [
       on ? REPLIES.on : REPLIES.off,
       `Code: ${cfg.version ?? 'unknown'} · up ${up >= 60 ? `${Math.floor(up / 60)}h ${up % 60}m` : `${up}m`}`,
-      `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} solved note${notesSent === 1 ? '' : 's'}, ${greetingsSent} greeting${greetingsSent === 1 ? '' : 's'}`,
+      `Sent since start: ${requestsSent} evidence request${requestsSent === 1 ? '' : 's'}, ${notesSent} export-bot note${notesSent === 1 ? '' : 's'}, ${greetingsSent} greeting${greetingsSent === 1 ? '' : 's'}`,
     ];
     if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
     if (stats?.exportBots) lines.push(stats.exportBots.length ? `Export bots: ${stats.exportBots.join(', ')} (their PAYMENT CONFIRMED / WITHDRAWAL REVERSED are acted on)` : '⚠️ No export bot resolved: confirmations are not recognised');
@@ -208,7 +208,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     },
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);
-      if (outcome === 'solved') notesSent++;
+      if (outcome === 'solved' || outcome === 'forwarded') notesSent++;
       c.log.info({ exportBot: msg.chatId, message: msg.messageId, outcome }, 'export bot message handled');
       c.metrics?.outbound.inc({ kind: 'payment_confirmed', outcome });
     },

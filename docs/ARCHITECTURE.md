@@ -47,8 +47,9 @@ workflows/evidenceRequest.ts (per customer message, in this order; any other out
   nlu/issueType.ts: moneyDirection scorer, else the model once (deposit | withdrawal | other | unclear) →
   not read by a human? → bot_enabled once more → requests.create('sending') → guarded sendText(kind
   'evidence_request') → markSent + outbound message row. A failed send removes the row.
-workflows/paymentConfirmed.ts: PAYMENT CONFIRMED (deposit note) or WITHDRAWAL REVERSED (withdrawal note: solved,
-  refunded to the wallet; kind 'withdrawal_reversed') → bot_enabled → the customer: by User ID (the Telegram
+workflows/paymentConfirmed.ts: PAYMENT CONFIRMED (deposit note), WITHDRAWAL REVERSED (withdrawal note: solved,
+  refunded to the wallet; kind 'withdrawal_reversed') or SEARCHING in the heading line ("issue forwarded to the team,
+  please wait" note; kind 'case_forwarded'; the case stays open) → bot_enabled → the customer: by User ID (the Telegram
   profile behind it — raw transport userProfile, else the stored customer — must not contradict the
   name/@username the confirmation gives), else by the @username (transport userByUsername; a known customer, or the name matches), else by the Mobile line (users.findByMobileNumber over the
   numbers customers typed, nlu/mobile.ts; exactly one candidate whose Telegram name/@username

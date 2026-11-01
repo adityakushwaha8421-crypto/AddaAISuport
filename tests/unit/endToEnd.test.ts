@@ -172,7 +172,7 @@ describe('/status and old-bot detection', () => {
     expect(reply.chatId).toBe(ADMIN);
     expect(reply.text).toMatch(/✅ Bot is ON/);
     expect(reply.text).toMatch(/Code: abc1234/);
-    expect(reply.text).toMatch(/1 evidence request, 0 solved notes, 0 greetings/);
+    expect(reply.text).toMatch(/1 evidence request, 0 export-bot notes, 0 greetings/);
     expect(reply.text).toMatch(/stream taken over 5× since start ⚠️ another connection is using this session/);
     expect(reply.text).toMatch(/OLD bot wording seen 2× in the last 24h/);
     // A customer typing /status gets nothing and learns nothing.

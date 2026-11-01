@@ -62,8 +62,23 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    > Sorry for the inconvenience. 💙
 
    Same safeguards as the payment note (identity check, bot ON, told once by case number), and the
-   customer's open case is closed. A payout record that is neither `PAYMENT CONFIRMED` nor
-   `WITHDRAWAL REVERSED` (for example `OrderStatus: Completed` with beneficiary details) sends nothing.
+   customer's open case is closed.
+
+   **Case being searched.** When an export bot opens a case (`🔎 SEARCHING ILLUNISE`, case number,
+   customer, `User ID`, "Looking for the matching order"), exactly that customer is told once per
+   case, in their language, that their issue is with the team and to wait for the update:
+
+   > 📩 Issue Forwarded to Team
+   >
+   > Hello Kailash Gurjar 👋
+   >
+   > We have forwarded your issue to our team. The team is checking it — please wait for the update. 🔎
+   >
+   > Thank you for your patience, Sir. 🙏
+
+   Nothing is solved by it: the case stays open, and the later `PAYMENT CONFIRMED` / `WITHDRAWAL
+   REVERSED` sends its own note. Same identity check and bot-ON rule. A payout record that is none of
+   these (for example `OrderStatus: Completed` with beneficiary details) sends nothing.
 3. **One greeting per fresh conversation.** A message that is only a greeting ("Hi", "Hello",
    "Hlo", "Namaste", "Good morning sir"…) is answered with one greeting, in the customer's language,
    **only** when it opens a conversation: no open deposit/withdrawal case in the chat, nothing else

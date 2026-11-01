@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assemble, type App } from '../../src/app.js';
 import { silentLogger } from '../../src/observability/logger.js';
-import { refundedText, solvedText } from '../../src/response/requests.js';
+import { forwardedText, refundedText, solvedText } from '../../src/response/requests.js';
 import { MemoryStore } from '../../src/storage/memory.js';
 import { extractMobileNumbers } from '../../src/nlu/mobile.js';
 import { identityMatches, parseConfirmation, parseCustomer, parseReference } from '../../src/workflows/paymentConfirmed.js';
@@ -367,5 +367,60 @@ describe('WITHDRAWAL REVERSED → the withdrawal solved note', () => {
     expect(customerSends(t)).toHaveLength(0);
     await app.botSwitch.set(true);
     expect(await confirm(reversed(), 4)).toBe('solved'); // not lost: told once ON
+  });
+});
+
+describe('🔎 SEARCHING → the "your issue is with the team" note', () => {
+  const searching = (userId: string, name = 'Kailash Gurjar', caseNo = 'CASE-20261101-000018') =>
+    ['🔎 SEARCHING ILLUNISE', '', `🗂 Case: ${caseNo}`, `👤 Customer: ${name}`, `🆔 User ID: ${userId}`, '', '⏳ Looking for the matching order...'].join('\n');
+
+  it('reads the pasted message: a search, the case number, the customer, the User ID, no amount', () => {
+    expect(parseConfirmation(searching('6931968502'))).toEqual({ event: 'case_searching', userId: '6931968502', orderId: 'CASE-20261101-000018', customerName: 'Kailash Gurjar', customerUsername: undefined, amount: undefined, mobile: undefined });
+    // "searching" somewhere in a confirmation's body does not turn it into a search
+    expect(parseConfirmation('✅ PAYMENT CONFIRMED\nUser ID: 6931968502\nNote: searching done')?.event).toBe('payment_confirmed');
+    expect(parseConfirmation('⏳ Looking for the matching order...\nUser ID: 6931968502')).toBeUndefined();
+  });
+
+  it('the pasted case: Kailash Gurjar is told once, in his language, that the team has it — the case stays open, and the later PAYMENT CONFIRMED still gets its own note', async () => {
+    build();
+    t.profiles.set('6931968502', { id: '6931968502', firstName: 'Kailash', lastName: 'Gurjar' });
+    expect(await app.onMessage(t.inbound('6931968502', 'deposit nahi hua 500 ka', [], NOW))).toBe('requested');
+    expect(await confirm(searching('6931968502'), 1)).toBe('forwarded');
+    expect(await confirm(searching('6931968502'), 2)).toBe('duplicate'); // the same case searched again (or the message re-delivered)
+    const notes = customerSends(t).filter((s) => s.kind === 'case_forwarded');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.chatId).toBe('6931968502');
+    expect(notes[0]!.text).toBe(forwardedText('hinglish', { name: 'Kailash Gurjar' }));
+    expect(notes[0]!.text).toContain('Hello Kailash Gurjar 👋');
+    expect(notes[0]!.text).toContain('team ko bhej diya hai');
+    expect(await store.requests.listOpen('6931968502')).toHaveLength(1); // nothing is solved yet
+    // the result of the search, later: the solved note, once, and the case closes
+    expect(await confirm(confirmation('6931968502', { name: 'Kailash Gurjar', amount: '₹500.00', order: 'CASE-20261101-000018' }), 3)).toBe('solved');
+    expect(await store.requests.listOpen('6931968502')).toHaveLength(0);
+    expect(customerSends(t).map((s) => s.kind)).toEqual(['evidence_request', 'case_forwarded', 'payment_confirmed']);
+  });
+
+  it('English and Hindi customers get it in their language; a different case for the same customer is told again', async () => {
+    build();
+    t.profiles.set('7000000011', { id: '7000000011', firstName: 'Rahul' });
+    t.profiles.set('7000000012', { id: '7000000012', firstName: 'Suresh' });
+    await app.onMessage(t.inbound('7000000011', 'My deposit is not reflecting', [], NOW));
+    await app.onMessage(t.inbound('7000000012', 'जमा किया पैसा नहीं आया', [], NOW));
+    expect(await confirm(searching('7000000011', 'Rahul', 'CASE-20261101-000020'), 1)).toBe('forwarded');
+    expect(await confirm(searching('7000000012', 'Suresh', 'CASE-20261101-000021'), 2)).toBe('forwarded');
+    expect(await confirm(searching('7000000011', 'Rahul', 'CASE-20261102-000030'), 3)).toBe('forwarded');
+    const notes = customerSends(t).filter((s) => s.kind === 'case_forwarded');
+    expect(notes.map((n) => n.chatId)).toEqual(['7000000011', '7000000012', '7000000011']);
+    expect(notes[0]!.text).toContain('We have forwarded your issue to our team');
+    expect(notes[1]!.text).toContain('टीम को भेज दिया है');
+  });
+
+  it('the same safeguards: the named customer must match the User ID, the bot must be ON', async () => {
+    build();
+    t.profiles.set('6931968502', { id: '6931968502', firstName: 'Kailash', lastName: 'Gurjar' });
+    expect(await confirm(searching('6931968502', 'Somebody Else'), 1)).toBe('user_mismatch');
+    await app.onMessage(t.inbound(ADMIN, '/botoff', [], NOW));
+    expect(await confirm(searching('6931968502'), 2)).toBe('bot_off');
+    expect(customerSends(t)).toHaveLength(0);
   });
 });

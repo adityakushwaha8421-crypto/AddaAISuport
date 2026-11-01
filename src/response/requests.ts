@@ -136,3 +136,25 @@ export function refundedText(lang: Language, d: SolvedDetails): string {
     pick(lang, 'Sorry for the inconvenience. 💙', 'Sorry for the inconvenience. 💙', 'असुविधा के लिए माफ़ी। 💙'),
   ].join('\n');
 }
+
+/**
+ * After the export bot's "🔎 SEARCHING …" (a case opened for the customer, the order being looked
+ * up): the customer is told once that their issue is with the team and to wait for the update.
+ */
+export function forwardedText(lang: Language, d: Pick<SolvedDetails, 'name'>): string {
+  const name = d.name?.trim() || pick(lang, 'Sir', 'Sir', 'सर');
+  return [
+    `📩 ${pick(lang, 'Issue Forwarded to Team', 'Issue Forwarded to Team', 'इश्यू टीम को भेज दिया गया')}`,
+    '',
+    pick(lang, `Hello ${name} 👋`, `Hello ${name} 👋`, `नमस्ते ${name} 👋`),
+    '',
+    pick(
+      lang,
+      'Aapka issue humne apni team ko bhej diya hai. Team ise check kar rahi hai — please update ka wait kijiye. 🔎',
+      'We have forwarded your issue to our team. The team is checking it — please wait for the update. 🔎',
+      'आपका इश्यू हमने अपनी टीम को भेज दिया है। टीम इसे चेक कर रही है — कृपया अपडेट का इंतज़ार कीजिए। 🔎',
+    ),
+    '',
+    pick(lang, 'Aapke patience ke liye thank you, Sir. 🙏', 'Thank you for your patience, Sir. 🙏', 'आपके धैर्य के लिए धन्यवाद, सर। 🙏'),
+  ].join('\n');
+}

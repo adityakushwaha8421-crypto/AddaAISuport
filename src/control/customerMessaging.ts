@@ -12,9 +12,10 @@
  *  - `withdrawal_pending`: the 12–24 hours note when a withdrawal's ID / screenshot shows it as pending;
  *  - `statement_request`: the bank-statement request when a withdrawal shows as successful;
  *  - `withdrawal_reversed`: the one solved note after the export bot's "🔄 WITHDRAWAL REVERSED … User ID" (refunded to the wallet);
+ *  - `case_forwarded`: the one "your issue is with the team, please wait" note after the export bot's "🔎 SEARCHING … Case … User ID";
  *  - `greeting`: the one answer to a bare "Hi"/"Hello" that opens a fresh conversation with no case in it.
  */
 export const CUSTOMER_MESSAGING_ENABLED = false;
 
 /** Message kinds allowed through while the switch above is `false`. */
-export const ENABLED_CUSTOMER_MESSAGES: ReadonlySet<string> = new Set<string>(['evidence_request', 'withdrawal_pending', 'statement_request', 'payment_confirmed', 'withdrawal_reversed', 'greeting']);
+export const ENABLED_CUSTOMER_MESSAGES: ReadonlySet<string> = new Set<string>(['evidence_request', 'withdrawal_pending', 'statement_request', 'payment_confirmed', 'withdrawal_reversed', 'case_forwarded', 'greeting']);
