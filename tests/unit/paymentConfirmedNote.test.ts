@@ -400,7 +400,7 @@ describe('🔎 SEARCHING → the "your issue is with the team" note', () => {
     expect(customerSends(t).map((s) => s.kind)).toEqual(['evidence_request', 'case_forwarded', 'payment_confirmed']);
   });
 
-  it('English and Hindi customers get it in their language; a different case for the same customer is told again', async () => {
+  it('English and Hindi customers get it in their language; one note per customer within the case window', async () => {
     build();
     t.profiles.set('7000000011', { id: '7000000011', firstName: 'Rahul' });
     t.profiles.set('7000000012', { id: '7000000012', firstName: 'Suresh' });
@@ -408,11 +408,36 @@ describe('🔎 SEARCHING → the "your issue is with the team" note', () => {
     await app.onMessage(t.inbound('7000000012', 'जमा किया पैसा नहीं आया', [], NOW));
     expect(await confirm(searching('7000000011', 'Rahul', 'CASE-20261101-000020'), 1)).toBe('forwarded');
     expect(await confirm(searching('7000000012', 'Suresh', 'CASE-20261101-000021'), 2)).toBe('forwarded');
-    expect(await confirm(searching('7000000011', 'Rahul', 'CASE-20261102-000030'), 3)).toBe('forwarded');
+    expect(await confirm(searching('7000000011', 'Rahul', 'CASE-20261102-000030'), 3)).toBe('duplicate'); // another progress message for the same customer within the case window
     const notes = customerSends(t).filter((s) => s.kind === 'case_forwarded');
-    expect(notes.map((n) => n.chatId)).toEqual(['7000000011', '7000000012', '7000000011']);
+    expect(notes.map((n) => n.chatId)).toEqual(['7000000011', '7000000012']);
     expect(notes[0]!.text).toContain('We have forwarded your issue to our team');
     expect(notes[1]!.text).toContain('टीम को भेज दिया है');
+  });
+
+  it('the pasted SENT TO BETIX message: "Nt" (User ID 6245942019) is told once that the team has it', async () => {
+    build();
+    t.profiles.set('6245942019', { id: '6245942019', firstName: 'Nt' });
+    const sentTo = ['📤 SENT TO BETIX', '', '🧾 Order: ILLUN-179351631472019', '👤 Customer: Nt', '🆔 User ID: 6245942019', '', '👀 Waiting for Betix to confirm...'].join('\n');
+    expect(parseConfirmation(sentTo)).toMatchObject({ event: 'case_searching', userId: '6245942019', orderId: 'ILLUN-179351631472019', customerName: 'Nt' });
+    expect(await confirm(sentTo, 1)).toBe('forwarded');
+    const notes = customerSends(t).filter((s) => s.kind === 'case_forwarded');
+    expect(notes.map((n) => n.chatId)).toEqual(['6245942019']);
+    expect(notes[0]!.text).toContain('Hello Nt 👋');
+  });
+
+  it('SEARCHING and then SENT TO for the same case: one note, not two; after the case window a new case is told again', async () => {
+    let now = NOW;
+    store = new MemoryStore();
+    t = new FakeTransport();
+    app = assemble({ store, transport: t, log: silentLogger, clock: () => now }, { adminIds: [ADMIN], supportChatId: SUPPORT, exportChatId: EXPORT_BOT, reopenHours: 48 });
+    t.profiles.set('6245942019', { id: '6245942019', firstName: 'Nt' });
+    const sentTo = ['📤 SENT TO BETIX', '', '🧾 Order: ILLUN-179351631472019', '👤 Customer: Nt', '🆔 User ID: 6245942019', '', '👀 Waiting for Betix to confirm...'].join('\n');
+    expect(await confirm(searching('6245942019', 'Nt', 'CASE-20261101-000040'), 1)).toBe('forwarded');
+    expect(await confirm(sentTo, 2)).toBe('duplicate');
+    now = new Date(NOW.getTime() + 49 * 3_600_000);
+    expect(await confirm(searching('6245942019', 'Nt', 'CASE-20261103-000071'), 3)).toBe('forwarded');
+    expect(customerSends(t).filter((s) => s.kind === 'case_forwarded')).toHaveLength(2);
   });
 
   it('the same safeguards: the named customer must match the User ID, the bot must be ON', async () => {

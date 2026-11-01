@@ -47,14 +47,15 @@ export function parseReference(text: string): string | undefined {
 
 /**
  * A valid result names PAYMENT CONFIRMED (a deposit), WITHDRAWAL REVERSED (a withdrawal refunded
- * to the wallet), or — in its heading line — SEARCHING (a case opened, the order being looked up);
+ * to the wallet), or — in its heading line — a case in progress: SEARCHING (the order being looked
+ * up) or SENT TO <gateway> ("waiting for … to confirm");
  * the customer is taken from an explicit User ID line when there is one.
  */
 export function parseConfirmation(text: string): Confirmation | undefined {
   const heading = text.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
   const event: ConfirmationEvent | undefined = /WITHDRAW\w*\s+REVERSED/i.test(text) ? 'withdrawal_reversed'
     : /PAYMENT\s+CONFIRMED/i.test(text) ? 'payment_confirmed'
-    : /\bSEARCHING\b/i.test(heading) ? 'case_searching'
+    : /\bSEARCHING\b|\bSENT\s+TO\b/i.test(heading) || /\bWaiting\s+for\b.+\bto\s+confirm\b/i.test(text) ? 'case_searching'
     : undefined;
   if (!event) return undefined;
   const userId = /User\s*ID\s*[:=]?\s*(\d{5,20})\b/i.exec(text)?.[1];
@@ -120,9 +121,10 @@ const fingerprint = (text: string) => createHash('sha1').update(text.toLowerCase
 export type ConfirmationOutcome = 'solved' | 'forwarded' | 'duplicate' | 'ignored' | 'bot_off' | 'user_unverified' | 'user_mismatch' | 'send_failed';
 
 /**
- * The export bot says "🔎 SEARCHING … Case … User ID: <id>": exactly that customer is told, once per
- * case, in their language, that their issue is with the team and to wait for the update (the case
- * stays open). Or:
+ * The export bot says "🔎 SEARCHING …" or "📤 SENT TO BETIX … Waiting for Betix to confirm" with a
+ * User ID: exactly that customer is told, in their language, that their issue is with the team and
+ * to wait for the update — once per case window (`reopenHours`), however many progress messages the
+ * case produces (the case stays open). Or:
  * The export bot says "🔄 WITHDRAWAL REVERSED … User ID: <id>": exactly that customer is told, once
  * per case, that the withdrawal issue is solved and the amount is refunded to their wallet. Or:
  * The export bot says "✅ PAYMENT CONFIRMED … User ID: <id>": exactly that customer is told, once
@@ -145,6 +147,8 @@ export class PaymentConfirmedWorkflow {
       botSwitch: { isOnNow(): Promise<boolean> };
       log: Logger;
       clock?: () => Date;
+      /** A case's progress messages (SEARCHING, SENT TO …) tell the customer once within this many hours. */
+      reopenHours?: number;
     },
   ) {}
 
@@ -153,7 +157,7 @@ export class PaymentConfirmedWorkflow {
     const text = msg.text ?? '';
     const parsed = parseConfirmation(text);
     if (!parsed) {
-      log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED, a WITHDRAWAL REVERSED or a SEARCHING)');
+      log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED, a WITHDRAWAL REVERSED or a case in progress)');
       return 'ignored';
     }
     if (!parsed.userId && !parsed.customerUsername && !parsed.mobile) {
@@ -186,21 +190,24 @@ export class PaymentConfirmedWorkflow {
     }
     const { userId, user, profile } = target;
 
-    const key = `${parsed.event}:${userId}:${parsed.orderId ? `order:${parsed.orderId.toUpperCase()}` : `text:${fingerprint(text)}`}`;
-    if (await store.settings.get(key)) {
+    const now = this.o.clock?.() ?? new Date();
+    // Told once: a result by its order / case reference; a case's progress by customer within the case
+    // window — SEARCHING and SENT TO for the same case are one "the team has it", not two.
+    const searching = parsed.event === 'case_searching';
+    const key = searching ? `case_searching:${userId}` : `${parsed.event}:${userId}:${parsed.orderId ? `order:${parsed.orderId.toUpperCase()}` : `text:${fingerprint(text)}`}`;
+    const told = (await store.settings.get(key)) as { at?: string } | undefined;
+    if (told && (!searching || now.getTime() - new Date(told.at ?? 0).getTime() < (this.o.reopenHours ?? 48) * 3_600_000)) {
       log.info({ userId, event: parsed.event }, 'the same result again: customer already told');
       return 'duplicate';
     }
     const lang: Language = user?.preferredLanguage ?? 'hinglish';
     const chatId = user?.chatId ?? userId; // a private chat's id is the user's id
-    const now = this.o.clock?.() ?? new Date();
     const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || parsed.customerName;
     // Claim the key before sending so two deliveries of the same confirmation cannot both send.
     await store.settings.set(key, { at: now.toISOString(), messageId: msg.messageId });
     // The bot's result decides the note, never the case the customer has open: a confirmed payment
     // is a deposit solved; a reversed withdrawal is a withdrawal solved, refunded to the wallet; a
-    // search just opened means the issue is with the team — nothing is solved yet.
-    const searching = parsed.event === 'case_searching';
+    // case in progress means the issue is with the team — nothing is solved yet.
     const note = searching ? forwardedText(lang, { name })
       : parsed.event === 'withdrawal_reversed' ? refundedText(lang, { name, amount: parsed.amount })
       : solvedText(lang, { name, amount: parsed.amount });
@@ -209,7 +216,7 @@ export class PaymentConfirmedWorkflow {
       const sent = await this.o.transport.sendText(chatId, escapeHtml(note), { html: true, kind });
       await store.messages.insert({ chatId, userId, telegramMessageId: sent.messageId, direction: 'out', text: note, media: [], meta: { kind }, createdAt: now });
       const closed = searching ? 0 : await store.requests.markSolved(userId, now);
-      log.info({ userId, event: parsed.event, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, searching ? 'export bot is searching the case: customer told once that the team has it' : 'export bot result: customer told once');
+      log.info({ userId, event: parsed.event, via: target.via, language: lang, amount: parsed.amount, requestsClosed: closed }, searching ? 'export bot has the case in progress: customer told once that the team has it' : 'export bot result: customer told once');
       return searching ? 'forwarded' : 'solved';
     } catch (err) {
       await store.settings.set(key, null).catch(() => undefined); // released: a later delivery may try again

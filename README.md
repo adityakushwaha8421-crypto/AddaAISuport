@@ -64,9 +64,11 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    Same safeguards as the payment note (identity check, bot ON, told once by case number), and the
    customer's open case is closed.
 
-   **Case being searched.** When an export bot opens a case (`🔎 SEARCHING ILLUNISE`, case number,
-   customer, `User ID`, "Looking for the matching order"), exactly that customer is told once per
-   case, in their language, that their issue is with the team and to wait for the update:
+   **Case in progress.** When an export bot reports a case under way — `🔎 SEARCHING ILLUNISE`
+   ("Looking for the matching order") or `📤 SENT TO BETIX` ("Waiting for Betix to confirm"), with
+   the customer and `User ID` — exactly that customer is told, in their language, that their issue
+   is with the team and to wait for the update. Once per customer per case window
+   (`CASE_REOPEN_HOURS`): the SEARCHING and the SENT TO of one case are one note, not two:
 
    > 📩 Issue Forwarded to Team
    >

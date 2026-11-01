@@ -110,7 +110,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     media: c.transport, lookup: c.withdrawalLookup,
     onClassified: async (ev) => void (await filing.file(ev.chatId, ev.category)),
   });
-  const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, directory: c.transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock });
+  const confirmations = new PaymentConfirmedWorkflow({ store: c.store, transport, directory: c.transport, botSwitch, log: c.log.child({ mod: 'payment-confirmed' }), clock: c.clock, reopenHours: cfg.reopenHours });
   // A human's reply takes the chat out of every folder in use (or the explicitly configured list).
   const removalTitles = cfg.humanReplyFolders?.length ? cfg.humanReplyFolders : filing.folders;
   const folders = new HumanReplyFolders({ transport: c.transport, titles: removalTitles, edits: folderEdits, log: c.log.child({ mod: 'folders' }) });
