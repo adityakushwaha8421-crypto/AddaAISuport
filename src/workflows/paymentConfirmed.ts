@@ -152,16 +152,30 @@ export class PaymentConfirmedWorkflow {
     },
   ) {}
 
-  async onExportMessage(msg: { messageId: number; text?: string }): Promise<ConfirmationOutcome> {
+  /** The last export-bot messages and what became of each, for /status: why a note did or did not go out. */
+  readonly recent: Array<{ at: Date; heading: string; outcome: ConfirmationOutcome; detail?: string; edited?: boolean }> = [];
+
+  async onExportMessage(msg: { messageId: number; text?: string; edited?: boolean }): Promise<ConfirmationOutcome> {
+    const trace: { detail?: string } = {};
+    const outcome = await this.handle(msg, trace);
+    const heading = scrubber.scrub((msg.text ?? '').split('\n').map((l) => l.trim()).find(Boolean) ?? '(no text)').slice(0, 40);
+    this.recent.push({ at: this.o.clock?.() ?? new Date(), heading, outcome, detail: trace.detail, edited: msg.edited });
+    if (this.recent.length > 5) this.recent.shift();
+    return outcome;
+  }
+
+  private async handle(msg: { messageId: number; text?: string; edited?: boolean }, trace: { detail?: string }): Promise<ConfirmationOutcome> {
     const { store, log } = this.o;
     const text = msg.text ?? '';
     const parsed = parseConfirmation(text);
     if (!parsed) {
       log.info({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 200) }, 'export bot message ignored (not a PAYMENT CONFIRMED, a WITHDRAWAL REVERSED or a case in progress)');
+      trace.detail = 'not a status the agent acts on';
       return 'ignored';
     }
     if (!parsed.userId && !parsed.customerUsername && !parsed.mobile) {
       log.warn({ messageId: msg.messageId, text: scrubber.scrub(text).slice(0, 300) }, 'export bot result without a User ID, an @username or a Mobile line: nobody is messaged');
+      trace.detail = 'no User ID, @username or Mobile line';
       return 'ignored';
     }
     if (!(await this.o.botSwitch.isOnNow())) return 'bot_off';
@@ -173,11 +187,13 @@ export class PaymentConfirmedWorkflow {
       const profile = (await this.profile(parsed.userId)) ?? (user ? { id: user.id, firstName: user.firstName, username: user.username } : undefined);
       if (!profile) {
         log.warn({ userId: parsed.userId }, 'PAYMENT CONFIRMED for a User ID Telegram does not know to this account: nobody is messaged');
+        trace.detail = `User ID ${parsed.userId} never wrote to this account and Telegram cannot look it up`;
         return 'user_unverified';
       }
       const identity = identityMatches(parsed, profile);
       if (!identity.ok) {
         log.warn({ userId: parsed.userId, customer: parsed.customerName, username: parsed.customerUsername, reason: identity.reason }, 'PAYMENT CONFIRMED names a customer that does not match this User ID: nobody is messaged');
+        trace.detail = identity.reason;
         return 'user_mismatch';
       }
       target = { userId: parsed.userId, user, profile, via: 'user_id' };
@@ -185,7 +201,10 @@ export class PaymentConfirmedWorkflow {
       // No User ID: the @username is the next exact address; the mobile number the last resort.
       const byName = await this.byUsername(parsed, log);
       const found = byName ?? (parsed.mobile ? await this.byMobile(parsed, log) : undefined);
-      if (!found) return 'user_unverified';
+      if (!found) {
+        trace.detail = 'no User ID, and the customer could not be confirmed by @username or mobile number';
+        return 'user_unverified';
+      }
       target = { ...found, via: byName ? 'username' : 'mobile' };
     }
     const { userId, user, profile } = target;
@@ -198,6 +217,7 @@ export class PaymentConfirmedWorkflow {
     const told = (await store.settings.get(key)) as { at?: string } | undefined;
     if (told && (!searching || now.getTime() - new Date(told.at ?? 0).getTime() < (this.o.reopenHours ?? 48) * 3_600_000)) {
       log.info({ userId, event: parsed.event }, 'the same result again: customer already told');
+      trace.detail = searching ? 'this customer was already told the team has it' : 'this result was already told';
       return 'duplicate';
     }
     const lang: Language = user?.preferredLanguage ?? 'hinglish';
@@ -222,6 +242,7 @@ export class PaymentConfirmedWorkflow {
       await store.settings.set(key, null).catch(() => undefined); // released: a later delivery may try again
       if (err instanceof BotOffError) return 'bot_off';
       log.warn({ err, userId }, 'solved note could not be sent');
+      trace.detail = err instanceof Error ? err.message.slice(0, 80) : 'send failed';
       return 'send_failed';
     }
   }

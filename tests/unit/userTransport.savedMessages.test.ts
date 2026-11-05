@@ -93,6 +93,19 @@ describe('export bot chat routing', () => {
     expect(onExportMessage.mock.calls.map((c) => (c as unknown as [{ chatId: string }])[0].chatId)).toEqual(['7000000001', '8869616760']);
   });
 
+  it("an export bot's EDIT of its status message counts like a new message; edits in any other chat, and our own, are not acted on", async () => {
+    const t = t2() as unknown as { onEdited(ev: unknown, handlers: unknown): Promise<void> };
+    const onExportMessage = vi.fn(async () => undefined);
+    const onMessage = vi.fn(async () => undefined);
+    const onOwnOutgoing = vi.fn(async () => undefined);
+    await t.onEdited(event('8869616760', 5, '📤 SENT TO BETIX\nUser ID: 6245942019', false), { onExportMessage, onMessage, onOwnOutgoing });
+    await t.onEdited(event('5595717485', 9, 'customer fixed a typo', false), { onExportMessage, onMessage, onOwnOutgoing });
+    await t.onEdited(event('8869616760', 6, 'the account edited its own message', true), { onExportMessage, onMessage, onOwnOutgoing });
+    expect(onExportMessage.mock.calls).toEqual([[{ chatId: '8869616760', messageId: 5, text: '📤 SENT TO BETIX\nUser ID: 6245942019', replyToMessageId: undefined, edited: true }]]);
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onOwnOutgoing).not.toHaveBeenCalled();
+  });
+
   it('EXPORT_BOT_ID takes ids and @usernames, comma-separated, with or without the @', () => {
     expect(parseExportBots('8869616760, @Addanative_bot,Chatexportfa_bot, 8869616760')).toEqual(['8869616760', '@Addanative_bot', '@Chatexportfa_bot']);
     expect(parseExportBots(undefined)).toEqual([]);

@@ -440,6 +440,39 @@ describe('🔎 SEARCHING → the "your issue is with the team" note', () => {
     expect(customerSends(t).filter((s) => s.kind === 'case_forwarded')).toHaveLength(2);
   });
 
+  it('one status message edited in place (processing → SEARCHING → SENT TO → PAYMENT CONFIRMED): the wait note once, then the solved note', async () => {
+    build();
+    t.profiles.set('6245942019', { id: '6245942019', firstName: 'Nt' });
+    const body = (head: string, tail: string) => [head, '', '🧾 Order: ILLUN-179351631472019', '👤 Customer: Nt', '🆔 User ID: 6245942019', '', tail].join('\n');
+    const outcomes: string[] = [];
+    const step = async (text: string, edited: boolean) => {
+      await app.onExportMessage({ chatId: EXPORT_BOT, messageId: 77, text, edited });
+      outcomes.push(app.confirmations.recent.at(-1)!.outcome);
+    };
+    await step('⏳ Processing your files...', false);
+    await step(body('🔎 SEARCHING ILLUNISE', '⏳ Looking for the matching order...'), true);
+    await step(body('📤 SENT TO BETIX', '👀 Waiting for Betix to confirm...'), true);
+    await step(body('✅ PAYMENT CONFIRMED', '💰 Amount: ₹500.00'), true);
+    expect(outcomes).toEqual(['ignored', 'forwarded', 'duplicate', 'solved']);
+    expect(customerSends(t).map((s) => s.kind)).toEqual(['case_forwarded', 'payment_confirmed']);
+  });
+
+  it('/status says what became of the last export-bot messages, and why nothing was sent', async () => {
+    build();
+    const status = async () => {
+      await app.onMessage(t.inbound(ADMIN, '/status', [], NOW));
+      return t.sent.filter((s) => s.chatId === ADMIN).at(-1)!.text;
+    };
+    expect(await status()).toContain('Export bot: no message received since start');
+    t.profiles.set('6931968502', { id: '6931968502', firstName: 'Kailash', lastName: 'Gurjar' });
+    await app.onExportMessage({ chatId: EXPORT_BOT, messageId: 1, text: searching('6931968502', 'Somebody Else') });
+    await app.onExportMessage({ chatId: EXPORT_BOT, messageId: 2, text: searching('6931968502'), edited: true });
+    const text = await status();
+    expect(text).toContain('Export bot, last messages:');
+    expect(text).toMatch(/"🔎 SEARCHING ILLUNISE" \(edited\) → forwarded/);
+    expect(text).toMatch(/"🔎 SEARCHING ILLUNISE" → user_mismatch: the confirmation names "Somebody Else"/);
+  });
+
   it('the same safeguards: the named customer must match the User ID, the bot must be ON', async () => {
     build();
     t.profiles.set('6931968502', { id: '6931968502', firstName: 'Kailash', lastName: 'Gurjar' });

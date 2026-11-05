@@ -82,7 +82,7 @@ export interface App {
   /** A human wrote from the account in a customer chat: the chat is theirs for HUMAN_TAKEOVER_HOURS, and it leaves the team's folders. */
   onOwnOutgoing(ev: { chatId: string; messageId: number; text?: string }): Promise<void>;
   /** The export bot wrote: a valid PAYMENT CONFIRMED with a User ID tells that customer once. */
-  onExportMessage(msg: { chatId?: string; messageId: number; text?: string; replyToMessageId?: number }): Promise<void>;
+  onExportMessage(msg: { chatId?: string; messageId: number; text?: string; replyToMessageId?: number; edited?: boolean }): Promise<void>;
 }
 
 /**
@@ -133,6 +133,11 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     ];
     if (stats) lines.push(`Telegram: last update ${Math.round((now().getTime() - stats.lastUpdateAt.getTime()) / 1000)}s ago · stream taken over ${stats.reconnects}× since start${stats.reconnects >= 3 ? ' ⚠️ another connection is using this session' : ''}`);
     if (stats?.exportBots) lines.push(stats.exportBots.length ? `Export bots: ${stats.exportBots.join(', ')} (their PAYMENT CONFIRMED / WITHDRAWAL REVERSED are acted on)` : '⚠️ No export bot resolved: confirmations are not recognised');
+    // Why a note did or did not go out: the last export-bot messages and what became of each.
+    const ago = (d: Date) => { const m = Math.max(0, Math.round((now().getTime() - d.getTime()) / 60_000)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m ago` : `${m}m ago`; };
+    lines.push(confirmations.recent.length
+      ? ['Export bot, last messages:', ...confirmations.recent.slice(-3).reverse().map((r) => ` • ${ago(r.at)} "${r.heading}"${r.edited ? ' (edited)' : ''} → ${r.outcome}${r.detail ? `: ${r.detail}` : ''}`)].join('\n')
+      : 'Export bot: no message received since start');
     if (filing.enabled) lines.push(`Folders: ${filing.filed} chat${filing.filed === 1 ? '' : 's'} filed into ${filing.folders.join(' / ')} since start`);
     if (folders.enabled) lines.push(`Folders: ${folders.removed} chat${folders.removed === 1 ? '' : 's'} taken out of ${removalTitles.join(' / ')} after a human reply`);
     lines.push(seen.length
@@ -209,7 +214,7 @@ export function assemble(c: AppComponents, cfg: AppConfig = {}): App {
     async onExportMessage(msg) {
       const outcome = await confirmations.onExportMessage(msg);
       if (outcome === 'solved' || outcome === 'forwarded') notesSent++;
-      c.log.info({ exportBot: msg.chatId, message: msg.messageId, outcome }, 'export bot message handled');
+      c.log.info({ exportBot: msg.chatId, message: msg.messageId, edited: msg.edited, outcome }, 'export bot message handled');
       c.metrics?.outbound.inc({ kind: 'payment_confirmed', outcome });
     },
   };

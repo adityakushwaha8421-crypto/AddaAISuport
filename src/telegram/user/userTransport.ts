@@ -1,5 +1,6 @@
 import bigInt from 'big-integer';
 import { Api, Logger as GramLogger, TelegramClient, sessions, utils } from 'telegram';
+import { EditedMessage, type EditedMessageEvent } from 'telegram/events/EditedMessage.js';
 import { NewMessage, Raw, type NewMessageEvent } from 'telegram/events/index.js';
 import { LogLevel } from 'telegram/extensions/Logger.js';
 import type { Logger } from 'pino';
@@ -231,6 +232,12 @@ export class UserTransport implements Transport, ReadStateApi {
       this.onEvent(ev, handlers).catch((err) => this.handleClientError(err, 'event handler failed'));
     }, new NewMessage({}));
 
+    // An export bot updates its status message in place (SEARCHING → SENT TO → CONFIRMED): its edits
+    // count like new messages. An edit in any other chat is not acted on.
+    client.addEventHandler((ev: EditedMessageEvent) => {
+      this.onEdited(ev, handlers).catch((err) => this.handleClientError(err, 'edit handler failed'));
+    }, new EditedMessage({}));
+
     // Any update at all proves the stream is alive (reads, typing, groups, channels — not only messages).
     client.addEventHandler(() => {
       this.lastEventAt = Date.now();
@@ -335,6 +342,15 @@ export class UserTransport implements Transport, ReadStateApi {
     const pending = [...(this.inFlight.get(chatId) ?? [])];
     if (pending.length) await Promise.race([Promise.allSettled(pending), new Promise((r) => setTimeout(r, 15_000))]);
     else await new Promise((r) => setTimeout(r, this.opts.ownSendGraceMs ?? 1500));
+  }
+
+  /** A message was edited. Only an export bot's edits matter: the same routing as its new messages. */
+  private async onEdited(ev: EditedMessageEvent, handlers: TransportHandlers) {
+    this.lastEventAt = Date.now();
+    const m = ev.message;
+    const chatId = m.chatId?.toString();
+    if (!chatId || !this.exportBots.has(chatId) || m.out || !handlers.onExportMessage) return;
+    await handlers.onExportMessage({ chatId, messageId: m.id, text: m.message, replyToMessageId: m.replyToMsgId, edited: true });
   }
 
   private async onEvent(ev: NewMessageEvent, handlers: TransportHandlers) {

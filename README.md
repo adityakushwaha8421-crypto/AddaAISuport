@@ -78,6 +78,8 @@ A Telegram agent for Fantasy Adda customer support, running on a **personal Tele
    >
    > Thank you for your patience, Sir. 🙏
 
+   The export bot may send these as new messages or update one status message in place
+   (processing → SEARCHING → SENT TO → PAYMENT CONFIRMED): its edits are read like new messages.
    Nothing is solved by it: the case stays open, and the later `PAYMENT CONFIRMED` / `WITHDRAWAL
    REVERSED` sends its own note. Same identity check and bot-ON rule. A payout record that is none of
    these (for example `OrderStatus: Completed` with beneficiary details) sends nothing.
@@ -223,7 +225,7 @@ same words are an ordinary customer message: stored, not acted on, not answered.
 |---|---|---|
 | `/botoff` | `bot_enabled = false`, saved in the store and the state file. | `⛔ Bot is OFF` |
 | `/boton` | `bot_enabled = true`, saved the same way. | `✅ Bot is ON` |
-| `/status` | Diagnostics, nothing changes: ON/OFF, running commit and uptime, how many evidence requests, solved notes and greetings this process sent, how many chats left the folders after a human reply, the Telegram update stream's health (how many times another connection took over this session), and whether replies in the **old bot's wording** were seen in customer chats in the last 24 h — i.e. whether an old copy of the bot is still running somewhere on this account. | the status text |
+| `/status` | Diagnostics, nothing changes: ON/OFF, running commit and uptime, how many evidence requests, solved notes and greetings this process sent, how many chats left the folders after a human reply, the last export-bot messages and what became of each (sent, or the reason nothing was sent), the Telegram update stream's health (how many times another connection took over this session), and whether replies in the **old bot's wording** were seen in customer chats in the last 24 h — i.e. whether an old copy of the bot is still running somewhere on this account. | the status text |
 | `/restart` (or `kill -USR2 <pid>` on the machine) | **Update + restart.** `git pull --ff-only` in the project folder, `npm install` if the lockfile changed, `npm run build`, then the running agent stops cleanly and a fresh process starts on the new code (`RESTART_MODE=respawn`, the default; `exit` lets systemd/docker/pm2 restart it instead). `.env` is re-read, the ON/OFF state is kept. If the pull or build fails, nothing restarts and the admin is told why. | `🔄 Pulling the latest code…` at once; then `📥 Pulled N commits (a → b)` with the commit list and files changed (or `📥 Already up to date: <commit> — <subject>`), `Built. Restarting…`; then `✅ Bot restarted successfully. Running <commit> — <subject>` from the new process once it is up; or `⚠️ Update failed.` + reason |
 
 ## What is stored
